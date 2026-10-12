@@ -1,0 +1,334 @@
+{
+  "started": "2026-09-16",
+  "verified": "2026-09-17",
+  "addon": "1.2.0",
+  "zip_sha256": "8fd97fa37936e77792b9f1f9985672e20f03ba8d21723714dbcb97dd0705af51",
+  "corpus": {
+    "files": 6865,
+    "bytes": 134862492,
+    "states": {
+      "decoded": 6865
+    },
+    "track_flag_examples": {
+      "34": "characters\\absolom_common\\Absolom_BlankFace.anm",
+      "38": "characters\\absolom_common\\Absolom_Interactive2.anm",
+      "42": "characters\\absolom_common\\Death_Interactive.anm",
+      "50": "characters\\bone_giant_common\\Ice_Intro.anm",
+      "46": "characters\\construct_hulk_common\\DeathIA.anm",
+      "35": "characters\\construct_ridable\\Construct_Pushplate_Enter.anm"
+    },
+    "scope": "Structure and finite decoded values only; binding and visual QA are separate."
+  },
+  "decoded_keys": 19999238,
+  "files_with_duplicate_track_identifiers": 94,
+  "native_oracle": {
+    "cases": [
+      {
+        "file": "characters/death/Death_BlankFace.anm",
+        "samples": 46,
+        "max_component_errors": {
+          "rotation": 1.1178600600736388e-08,
+          "position": 0.0,
+          "scale": 0.0,
+          "scalar": 0.0
+        }
+      },
+      {
+        "file": "characters/death/D_Dash_F.anm",
+        "samples": 4857,
+        "max_component_errors": {
+          "rotation": 1.793107036185404e-07,
+          "position": 0.0001220703125,
+          "scale": 0.0,
+          "scalar": 6.895439297327499e-08
+        }
+      },
+      {
+        "file": "characters/death/Reaper_Atk04.anm",
+        "samples": 21965,
+        "max_component_errors": {
+          "rotation": 1.7601136026446085e-07,
+          "position": 1.52587890625e-05,
+          "scale": 0.0,
+          "scalar": 0.0
+        }
+      },
+      {
+        "file": "characters/belial_dlc90/Run_F.anm",
+        "samples": 14335,
+        "max_component_errors": {
+          "rotation": 1.7079052350155166e-07,
+          "position": 3.814697265625e-06,
+          "scale": 0.0,
+          "scalar": 9.81723560222747e-08
+        }
+      },
+      {
+        "file": "characters/absolom_common/Absolom_Interactive2.anm",
+        "samples": 276306,
+        "max_component_errors": {
+          "rotation": 1.9662538075504443e-07,
+          "position": 1.52587890625e-05,
+          "scale": 0.0,
+          "scalar": 0.0
+        }
+      },
+      {
+        "file": "characters/absolom_common/Death_Interactive.anm",
+        "samples": 708267,
+        "max_component_errors": {
+          "rotation": 2.0089628904873535e-07,
+          "position": 6.103515625e-05,
+          "scale": 0.0,
+          "scalar": 0.0
+        }
+      },
+      {
+        "file": "characters/bone_giant_common/Ice_Intro.anm",
+        "samples": 84982,
+        "max_component_errors": {
+          "rotation": 2.1320126319945842e-07,
+          "position": 3.0517578125e-05,
+          "scale": 0.0,
+          "scalar": 6.895439297327499e-08
+        }
+      },
+      {
+        "file": "characters/construct_hulk_common/DeathIA.anm",
+        "samples": 127972,
+        "max_component_errors": {
+          "rotation": 2.212379950350396e-07,
+          "position": 3.0517578125e-05,
+          "scale": 0.0,
+          "scalar": 2.384185793236071e-08
+        }
+      },
+      {
+        "file": "characters/construct_ridable/Construct_Pushplate_Enter.anm",
+        "samples": 3642,
+        "max_component_errors": {
+          "rotation": 1.4705966389083613e-07,
+          "position": 7.62939453125e-06,
+          "scale": 0.0,
+          "scalar": 0.0
+        }
+      }
+    ],
+    "total_samples": 1242372
+  },
+  "blender": {
+    "blender": "5.2.2 LTS",
+    "parser_root": "ZIP 1.2.0 / _vendor (asserted at runtime)",
+    "cases": [
+      {
+        "mesh": "characters/belial_dlc90/belial.2",
+        "clip": "Run_F.anm",
+        "forward": false,
+        "scene_fps": 24.0,
+        "bound_tracks": 144,
+        "unmatched_tracks": 8,
+        "position_error": 0.00014720463582245416,
+        "rotation_error_radians": 0.0,
+        "matrix_error": 0.0001404874973047754
+      },
+      {
+        "mesh": "characters/belial_dlc90/belial.2",
+        "clip": "Run_F.anm",
+        "forward": true,
+        "scene_fps": 24.0,
+        "bound_tracks": 144,
+        "unmatched_tracks": 8,
+        "position_error": 0.00015691160840999115,
+        "rotation_error_radians": 0.0,
+        "matrix_error": 0.0001460648961213451
+      },
+      {
+        "mesh": "characters/belial_dlc90/belial.2",
+        "clip": "Idle.anm",
+        "forward": false,
+        "scene_fps": 59.940057141856784,
+        "bound_tracks": 150,
+        "unmatched_tracks": 2,
+        "position_error": 0.00013167500272772537,
+        "rotation_error_radians": 0.0,
+        "matrix_error": 0.00010637126531065633
+      },
+      {
+        "mesh": "characters/belial_dlc90/belial.2",
+        "clip": "Idle.anm",
+        "forward": true,
+        "scene_fps": 59.940057141856784,
+        "bound_tracks": 150,
+        "unmatched_tracks": 2,
+        "position_error": 0.00014113396675437514,
+        "rotation_error_radians": 0.0,
+        "matrix_error": 0.00013981185162492693
+      },
+      {
+        "mesh": "characters/belial_dlc90/belial.2",
+        "clip": "Atk_TridentStrike_Strike.anm",
+        "forward": false,
+        "scene_fps": 24.0,
+        "bound_tracks": 151,
+        "unmatched_tracks": 2,
+        "position_error": 0.00019282878541648576,
+        "rotation_error_radians": 0.0,
+        "matrix_error": 0.00014904633509615905
+      },
+      {
+        "mesh": "characters/belial_dlc90/belial.2",
+        "clip": "Atk_TridentStrike_Strike.anm",
+        "forward": true,
+        "scene_fps": 24.0,
+        "bound_tracks": 151,
+        "unmatched_tracks": 2,
+        "position_error": 0.00019322150688288935,
+        "rotation_error_radians": 0.0,
+        "matrix_error": 0.00015286103236178405
+      },
+      {
+        "mesh": "characters/death/death_head.2",
+        "clip": "D_Dash_F.anm",
+        "forward": false,
+        "scene_fps": 24.0,
+        "bound_tracks": 105,
+        "unmatched_tracks": 19,
+        "position_error": 3.377836450719167e-05,
+        "rotation_error_radians": 0.0,
+        "matrix_error": 3.092426075568255e-05
+      },
+      {
+        "mesh": "characters/death/death_head.2",
+        "clip": "D_Dash_F.anm",
+        "forward": true,
+        "scene_fps": 24.0,
+        "bound_tracks": 105,
+        "unmatched_tracks": 19,
+        "position_error": 4.433198867109749e-05,
+        "rotation_error_radians": 1.7484556025237907e-07,
+        "matrix_error": 3.7745301099789685e-05
+      },
+      {
+        "mesh": "characters/death/death_head.2",
+        "clip": "Death_Visemes.anm",
+        "forward": false,
+        "scene_fps": 24.0,
+        "bound_tracks": 6,
+        "unmatched_tracks": 5,
+        "position_error": 3.377836450719167e-05,
+        "rotation_error_radians": 0.0,
+        "matrix_error": 3.092426075568255e-05
+      },
+      {
+        "mesh": "characters/death/death_head.2",
+        "clip": "Death_Visemes.anm",
+        "forward": true,
+        "scene_fps": 24.0,
+        "bound_tracks": 6,
+        "unmatched_tracks": 5,
+        "position_error": 4.433198867109749e-05,
+        "rotation_error_radians": 0.0,
+        "matrix_error": 3.7745301099789685e-05
+      }
+    ],
+    "posed_native_export_rejected": true,
+    "reopened_import": true,
+    "previous_actions_preserved": true,
+    "changed_inheritance_rejected": true
+  },
+  "native_mesh_regression": {
+    "blender": "5.2.2 LTS",
+    "parser_root": "ZIP 1.2.0 / _vendor",
+    "cases": [
+      {
+        "file": "items/armor/base_glovesa.2",
+        "forward": false,
+        "byte_identical": true,
+        "vertices": 1377,
+        "triangles": 2093
+      },
+      {
+        "file": "items/armor/base_glovesa.2",
+        "forward": true,
+        "byte_identical": true,
+        "vertices": 1377,
+        "triangles": 2093
+      },
+      {
+        "file": "items/armor/abyssala01_gloves.2",
+        "forward": false,
+        "byte_identical": true,
+        "vertices": 3826,
+        "triangles": 5096
+      },
+      {
+        "file": "items/armor/abyssala01_gloves.2",
+        "forward": true,
+        "byte_identical": true,
+        "vertices": 3826,
+        "triangles": 5096
+      },
+      {
+        "file": "characters/belial_dlc90/belial.2",
+        "forward": false,
+        "byte_identical": true,
+        "vertices": 9876,
+        "triangles": 13736
+      },
+      {
+        "file": "characters/belial_dlc90/belial.2",
+        "forward": true,
+        "byte_identical": true,
+        "vertices": 9876,
+        "triangles": 13736
+      }
+    ],
+    "edited": {
+      "positions": true,
+      "uvs": true,
+      "weights": true
+    },
+    "rejected": [
+      "overwrite source",
+      "new UV seam",
+      "reordered vertices"
+    ],
+    "external_rig_byte_identical": true,
+    "reopened_byte_identical": true
+  },
+  "visual_review": {
+    "images": "temp/qa-anm-zip-01/*.png",
+    "reviewed_examples": [
+      "0_Run_F_0.png",
+      "0_Run_F_1.png",
+      "2_Atk_TridentStrike_Strike_2.png",
+      "3_D_Dash_F_2.png"
+    ],
+    "result": "Coherent body/head silhouettes after passive quaternion conversion; cloth physics not reproduced."
+  },
+  "limitations": [
+    "Unmatched tracks require explicit partial import and remain suspicious.",
+    "Header flag 0x2 and scalar visual semantics are unresolved.",
+    "No ANM export, layer blending, game events or cloth simulation.",
+    "Native SLERP approximated between half-source-frame baked samples.",
+    "Real Blender validation performed on 5.2.2 LTS only."
+  ],
+  "specific_unit_tests": {
+    "passed": 112
+  },
+  "baseline_failure": {
+    "test": "tests/test_slayer_materials.py::Juego::test_el_aliado_resuelve_su_difusa_de_cuerpo",
+    "expected": "body_2048_d.x2_syt",
+    "working_tree": "body_blue_d.png",
+    "HEAD": "body_blue_d.png",
+    "affected_modules_modified": false
+  },
+  "full_suite": {
+    "passed": 1272,
+    "skipped": 30,
+    "subtests_passed": 458,
+    "failed": 1,
+    "seconds": 580.07,
+    "report": "temp/anm-pytest-final.xml"
+  }
+}

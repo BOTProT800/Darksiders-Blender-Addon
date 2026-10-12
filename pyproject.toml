@@ -1,0 +1,27 @@
+[project]
+name = "darksiders-blender-addon"
+version = "2.0.0"
+description = "Addon de Blender para modelos, esqueletos y animaciones de Darksiders"
+requires-python = ">=3.11"
+license = "MIT"
+# El addon solo usa numpy dentro de Blender, que ya lo trae. Fuera de Blender
+# hace falta para la suite y los scripts de corpus.
+dependencies = ["numpy>=1.26.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.16"]
+
+[tool.pytest.ini_options]
+# Sin esto, `pytest` a secas no encuentra `io_darksiders` ni `tests`.
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+extend-exclude = ["temp", "dist"]
+
+[tool.ruff.lint]
+# Errores reales (pyflakes + los pycodestyle que señalan bugs), sin reglas de
+# estilo que reescribirían parsers de ingeniería inversa ya validados.
+select = ["E4", "E7", "E9", "F"]

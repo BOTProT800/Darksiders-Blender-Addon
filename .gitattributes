@@ -1,0 +1,5 @@
+# LF en el repositorio y en la copia de trabajo, aunque git esté configurado con
+# core.autocrlf=true: los archivos venían de ANANSI con finales mezclados.
+* text=auto eol=lf
+*.png binary
+*.zip binary

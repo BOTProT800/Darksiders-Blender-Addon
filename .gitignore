@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+
+# Zips del addon (se regeneran con scripts/build.py)
+dist/
+
+# Salidas de QA y copias locales: pueden contener assets del juego, que no
+# se versionan ni se redistribuyen.
+temp/
+*.blend
+*.blend1
+
+# Assets del juego, por si alguno acaba suelto en el repo
+*.2
+*.o3d
+*.anm
+*.obp
+*.upak
+
+# Herramientas locales
+.claude/
+.cursor/

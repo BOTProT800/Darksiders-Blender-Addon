@@ -1,0 +1,19 @@
+schema_version = "1.0.0"
+
+id = "io_darksiders"
+version = "2.0.0"
+name = "Darksiders"
+tagline = "Modelos, esqueletos y animaciones de Darksiders"
+maintainer = "BOTProT800"
+type = "add-on"
+
+license = ["SPDX:MIT"]
+blender_version_min = "4.2.0"
+
+tags = ["Import-Export", "Pipeline"]
+
+# Autosuficiente: los parsers viajan dentro (formats/) y solo usa además numpy,
+# que Blender ya incluye. No descarga nada ni ejecuta procesos externos; el
+# permiso de ficheros es para leer los archivos del juego y escribir copias.
+[permissions]
+files = "Leer .2/.o3d/.anm/.obp y exportar copias editadas .2"
