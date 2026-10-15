@@ -1,6 +1,6 @@
 [project]
 name = "darksiders-blender-addon"
-version = "2.0.0"
+version = "2.1.0"
 description = "Addon de Blender para modelos, esqueletos y animaciones de Darksiders"
 requires-python = ">=3.11"
 license = "MIT"
