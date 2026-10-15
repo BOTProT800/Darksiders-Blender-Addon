@@ -9,10 +9,13 @@ from io_darksiders.formats.native import (
     DcmExportError,
     MeshEdit,
     MeshSubset,
+    bounds_matrices,
     deletion_subset,
     patch_dcm,
     prune_dcm,
+    rig_bounds_matrices,
 )
+from io_darksiders.formats.skeleton import Bone, Skeleton
 from tests.test_mesh import build_dcm
 
 # Malla 0 con piel y tres materiales; malla 1 estática sin cola (60 B/vértice,
@@ -248,6 +251,59 @@ class PruneTests(unittest.TestCase):
                 deletion_subset(mesh, vertex_ids, polygons)
         with self.assertRaises(DcmExportError):
             prune_dcm(self.raw, {0: MeshSubset(np.array([0, 2, 1]), np.array([0]))})
+
+
+class FollowNodeOutsidePaletteTests(unittest.TestCase):
+    """La caja de la malla 2 está en `Bone_Junk`, que su paleta no trae (como `Bone_MM_Root`
+    en `makermale_elder.2`): solo un esqueleto sabe dónde está ese nodo."""
+
+    DESCRIPTOR = {"Visuals": [{"class": "SkinMeshVisual", "MeshID": 2, "BBFollowNode": "Bone_Junk"}]}
+
+    def setUp(self):
+        raw = bytearray(build_pruneable())
+        mesh = parse_dcm(bytes(raw)).meshes[2]
+        # La caja declarada, en el espacio de un nodo que está 10 unidades más arriba.
+        box = np.r_[mesh.positions.min(0), mesh.positions.max(0)] - [0, 0, 10, 0, 0, 10]
+        raw[mesh.bbox_offset:mesh.bbox_offset + 24] = box.astype("<f4").tobytes()
+        self.raw = bytes(raw)
+        self.parsed = parse_dcm(self.raw)
+
+    @staticmethod
+    def rig(height):
+        return Skeleton("rig", (Bone("Bone_Pelvis", -1, (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
+                                Bone("Bone_Junk", 0, (0.0, 0.0, height), (0.0, 0.0, 0.0))))
+
+    def test_fixture_has_the_box_in_another_space(self):
+        self.assertTrue(self.parsed.meshes[2].warnings)
+        self.assertEqual(bounds_matrices(self.parsed, self.DESCRIPTOR), {})
+
+    def test_node_resolved_from_the_skeleton_that_fits_the_box(self):
+        boxes = rig_bounds_matrices(self.parsed, self.DESCRIPTOR, [self.rig(50.0), self.rig(10.0)], [2])
+        expected = np.eye(4)
+        expected[3, 2] = -10.0
+        np.testing.assert_allclose(boxes[2], expected)
+
+    def test_skeleton_that_does_not_fit_the_box_is_not_used(self):
+        self.assertEqual(rig_bounds_matrices(self.parsed, self.DESCRIPTOR, [self.rig(50.0)], [2]), {})
+
+    def test_skeletons_are_only_requested_until_resolved(self):
+        def candidates():
+            yield self.rig(10.0)
+            raise AssertionError("pidió otro esqueleto ya resuelta la caja")
+        self.assertIn(2, rig_bounds_matrices(self.parsed, self.DESCRIPTOR, candidates(), [2]))
+        self.assertEqual(rig_bounds_matrices(self.parsed, self.DESCRIPTOR, candidates(), []), {})
+
+    def test_moving_vertices_updates_the_box_in_the_node_space(self):
+        mesh = self.parsed.meshes[2]
+        edit = MeshEdit(positions=mesh.positions + [0, 0, 2],
+                        normals=np.tile([0, 0, 1], (4, 1)), tangents=np.tile([1, 0, 0, 1], (4, 1)))
+        with self.assertRaisesRegex(DcmExportError, "BBFollowNode"):
+            patch_dcm(self.raw, {2: edit})
+        boxes = rig_bounds_matrices(self.parsed, self.DESCRIPTOR, [self.rig(10.0)], [2])
+        patched = parse_dcm(patch_dcm(self.raw, {2: edit}, boxes=boxes)).meshes[2]
+        np.testing.assert_array_equal(patched.positions, edit.positions)
+        self.assertEqual(patched.bbox[:5], mesh.bbox[:5])
+        self.assertAlmostEqual(patched.bbox[5], float(edit.positions[:, 2].max()) - 10, places=5)
 
 
 if __name__ == "__main__":

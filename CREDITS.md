@@ -239,6 +239,22 @@ derivó código** de ninguna.
   tiene que ser afín exacta (`ACCESSOR_INVALID_IBM`).
 - **Modificaciones:** n/a
 
+### Eric Lengyel — «Computing Tangent Space Basis Vectors for an Arbitrary Mesh» (2001)
+- **Autor / Organización:** Eric Lengyel / Terathon Software
+- **Fuente:** artículo citado de memoria; URL sin verificar
+- **Licencia:** Desconocida — verificar
+- **Fecha de incorporación:** 2026-10-13
+- **Dónde se usa:** `io_darksiders/roundtrip.py` (`_lengyel_signs`, desde el
+  2026-10-14), `docs/formato.md` (signo @48) y `docs/aprendizajes.md`
+- **Para qué nos sirvió:** su método —tangente y bitangente de cada cara sin
+  normalizar, sumadas por vértice, y signo de `dot(N × T, B)`— reproduce el
+  99,86 % de los signos de bitangente del corpus. Explica por qué el de
+  `calc_tangents` de Blender discrepa en el 1,2 % de los vértices. El
+  exportador lo usa para decidir dónde invierte una edición el signo guardado.
+- **Modificaciones:** implementación propia del método descrito, solo para el
+  signo; no se copió código del artículo. La medición del corpus se hizo con un
+  script local, fuera del repositorio.
+
 ## 4. Proyectos y datos locales
 
 ### Darksiders2DLL — v0.8.1-deletion-trial (consultado el 2026-10-10)
@@ -264,8 +280,9 @@ derivó código** de ninguna.
 - **Dónde se usa:** `scripts/qa_blender.py`, `scripts/qa_animation_blender.py`,
   `scripts/qa_animation_corpus.py`, `scripts/qa_animation_native.py`
 - **Para qué nos sirvió:** contrastar winding, orientación, normales, tangentes
-  y `BBFollowNode` en `base_glovesa`, `abyssala01_gloves` y Belial; la ida y
-  vuelta byte idéntica; 6.865 `.anm` de corpus; y, por análisis estático y
+  y `BBFollowNode` en `base_glovesa`, `abyssala01_gloves` y Belial; los pliegues
+  de UV y el signo de bitangente en `makermale_elder.2`; la ida y vuelta byte
+  idéntica; 6.865 `.anm` de corpus; y, por análisis estático y
   emulación aislada, las rutinas de `Darksiders2.exe` (SHA-256
   `5580738ef70bc5bbcc72d7dc4a9c319956cd14dbfef6f9dbec54c1b5d97799fb`). No se
   copió código del ejecutable ni se redistribuyeron sus bytes.
@@ -278,11 +295,17 @@ derivó código** de ninguna.
 - **Fuente:** https://code.claude.com/docs
 - **Licencia:** Desconocida — verificar (aplicación de escritorio y su documentación)
 - **Fecha de incorporación:** 2026-10-10
-- **Dónde se usa:** todo el repositorio (traslado desde ANANSI)
+- **Dónde se usa:** todo el repositorio (traslado desde ANANSI);
+  `io_darksiders/roundtrip.py`, `io_darksiders/formats/native.py`,
+  `tests/test_roundtrip.py`, `tests/test_native.py` y `scripts/qa_blender.py`
+  (2026-10-13 y 2026-10-14)
 - **Para qué nos sirvió:** como agente, se usó para trasladar el addon desde
   ANANSI: reorganizar los parsers dentro del paquete, adaptar tests y scripts,
   reescribir el empaquetador, sanear los nombres del OBP, repetir el QA en
-  Blender 5.2.2 con el zip 2.0.0 y escribir esta documentación.
+  Blender 5.2.2 con el zip 2.0.0 y escribir esta documentación. El 2026-10-13,
+  diagnosticar las UV de `makermale_elder.2`, quitar el rechazo de la
+  exportación por UV dobladas y resolver el `BBFollowNode` que la paleta no
+  trae. El 2026-10-14, el signo de bitangente relativo al del juego.
 - **Modificaciones:** ninguna.
 
 ### OpenAI Codex — versión de la aplicación no determinada
@@ -300,4 +323,4 @@ derivó código** de ninguna.
 
 Licencias marcadas arriba como `Desconocida — verificar`: finale00, zaramot,
 Szkaradek123, Darksiders2.bms, el hilo de ZenHAX, la especificación de Khronos,
-Darksiders2DLL, los assets del juego, Claude Code y OpenAI Codex.
+el artículo de Lengyel, Darksiders2DLL, los assets del juego, Claude Code y OpenAI Codex.

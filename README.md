@@ -40,7 +40,8 @@ Blender es otro addon:
 
 1. En `Edit > Preferences > Add-ons`, despliega «Darksiders (ANANSI)» y pulsa
    **Desinstalar addon**.
-2. Instala `io_darksiders-2.0.0.zip` y reinicia Blender.
+2. Instala el zip de esta versión (`io_darksiders-<versión>.zip`) y reinicia
+   Blender.
 
 Las escenas importadas con la 1.1.0 o posterior siguen pudiendo exportar el
 `.2`, y los rigs importados con la 1.2.0 o posterior siguen admitiendo
@@ -102,7 +103,15 @@ ni efectos. Todavía **no se exporta `.anm`**.
 El original tiene que seguir disponible y sin modificar: la copia parte de él y
 conserva bloques desconocidos, índices, materiales, colores, paletas y bind
 poses. Una exportación sin ediciones es **idéntica byte a byte**. Al cambiar
-geometría o UV se recalculan normales y tangentes.
+geometría o UV se recalculan normales y tangentes; el signo de la bitangente se
+conserva del original y solo se invierte donde la edición lo invierte (por
+ejemplo, al espejar una isla UV).
+
+Si mueves vértices de una malla cuya caja va referida a un hueso que la malla no
+trae (pasa en `makermale_elder.2`), el exportador busca ese hueso en el
+esqueleto elegido al importar, en los `.o3d` de la carpeta y en los de alrededor,
+y solo lo usa si la caja original lo confirma. Si no lo encuentra, rechaza la
+exportación con «falta resolver BBFollowNode».
 
 Se rechaza, con un mensaje que nombra el objeto, todo lo que no es una edición
 soportada: fusionar, disolver, subdividir, extruir, costuras UV nuevas, cambios

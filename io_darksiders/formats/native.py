@@ -244,9 +244,8 @@ def _array(value, shape, label):
     return out
 
 
-def bounds_matrices(parsed, descriptor: dict) -> dict[int, np.ndarray]:
-    """BBFollowNode del .o3d -> espacio de la caja de cada malla del .2."""
-    result = {}
+def _follow_nodes(parsed, descriptor: dict):
+    """Pares (malla, BBFollowNode) que declaran para este .2 los visuals del .o3d."""
     for visual in descriptor.get("Visuals", ()):
         if not isinstance(visual, dict):
             continue
@@ -254,17 +253,80 @@ def bounds_matrices(parsed, descriptor: dict) -> dict[int, np.ndarray]:
         if parsed.path and name and name.casefold() != parsed.path.stem.casefold():
             continue
         node = visual.get("BBFollowNode")
-        ids = [visual.get("MeshID"), *(visual.get("LODMeshID") or [])]
-        for index in ids:
-            if not isinstance(index, int) or not 0 <= index < len(parsed.meshes):
-                continue
-            bone = next((b for b in parsed.meshes[index].bones if b.name == node), None)
-            if bone is not None:
-                matrix = np.asarray(bone.inverse_bind, dtype=np.float64).reshape(4, 4)
-                if index in result and not np.allclose(result[index], matrix):
-                    raise DcmExportError(f"malla {index}: BBFollowNode ambiguo")
-                result[index] = matrix
+        for index in [visual.get("MeshID"), *(visual.get("LODMeshID") or [])]:
+            if isinstance(index, int) and 0 <= index < len(parsed.meshes):
+                yield index, node
+
+
+def bounds_matrices(parsed, descriptor: dict) -> dict[int, np.ndarray]:
+    """BBFollowNode del .o3d -> espacio de la caja de cada malla del .2."""
+    result = {}
+    for index, node in _follow_nodes(parsed, descriptor):
+        bone = next((b for b in parsed.meshes[index].bones if b.name == node), None)
+        if bone is not None:
+            matrix = np.asarray(bone.inverse_bind, dtype=np.float64).reshape(4, 4)
+            if index in result and not np.allclose(result[index], matrix):
+                raise DcmExportError(f"malla {index}: BBFollowNode ambiguo")
+            result[index] = matrix
     return result
+
+
+def rig_bounds_matrices(parsed, descriptor: dict, skeletons, indices) -> dict[int, np.ndarray]:
+    """Lo mismo para un BBFollowNode que la paleta de la malla no trae.
+
+    En `makermale_elder.2` la caja de la malla 1 está en `Bone_MM_Root`, que solo
+    aparece en `makermale_elder_base.o3d`. La matriz es entonces
+    `inverse(world)` del nodo en un esqueleto, la misma que la paleta guarda
+    como inverse bind para sus huesos. Como el esqueleto sale de una búsqueda,
+    solo se acepta si la geometría de la plantilla, llevada a ese espacio, cabe
+    en la caja declarada: el propio archivo hace de oráculo. En el corpus, de
+    las 255 mallas en este caso, los `.o3d` de su carpeta resuelven 119 sin
+    ninguna ambigüedad y `find_rig` 45 más.
+
+    ``skeletons`` se consume a demanda y se deja de pedir en cuanto todas las
+    mallas de ``indices`` tienen matriz: cada esqueleto hay que buscarlo y leerlo.
+    """
+    nodes: dict[int, set] = {}
+    for index, node in _follow_nodes(parsed, descriptor):
+        nodes.setdefault(index, set()).add(node)
+    pending = {index: next(iter(nodes[index])) for index in indices
+               if len(nodes.get(index, ())) == 1 and isinstance(next(iter(nodes[index])), str)}
+    result = {}
+    candidates = iter(skeletons)
+    while pending:
+        skeleton = next(candidates, None)
+        if skeleton is None:
+            break
+        world = None
+        for index, node in list(pending.items()):
+            bone = skeleton.index_of(node)
+            if bone is None:
+                continue
+            world = skeleton.world_matrices() if world is None else world
+            try:
+                matrix = np.linalg.inv(np.asarray(world[bone], dtype=np.float64))
+            except np.linalg.LinAlgError:
+                continue
+            matrix[:, 3] = (0.0, 0.0, 0.0, 1.0)
+            if _box_holds(parsed.meshes[index], matrix):
+                result[index] = matrix
+                del pending[index]
+    return result
+
+
+def _box_holds(mesh, matrix) -> bool:
+    """La geometría de la plantilla, llevada por ``matrix``, cabe en su caja declarada.
+
+    Las cajas vienen acolchadas, así que se pide que quepa y no que coincida.
+    La tolerancia es la de `mesh._check_bbox`.
+    """
+    if not mesh.vertex_count:
+        return False
+    points = np.c_[np.asarray(mesh.positions, dtype=np.float64), np.ones(mesh.vertex_count)] @ matrix
+    declared = np.asarray(mesh.bbox, dtype=np.float64)
+    tolerance = max(float(np.abs(declared).max()), 1.0) * 1e-3
+    return bool(np.all(points[:, :3].min(0) >= declared[:3] - tolerance)
+                and np.all(points[:, :3].max(0) <= declared[3:] + tolerance))
 
 
 def patch_dcm(source: bytes, edits: dict[int, MeshEdit], *, boxes=None) -> bytes:

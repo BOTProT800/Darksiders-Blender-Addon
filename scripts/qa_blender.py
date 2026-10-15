@@ -136,6 +136,108 @@ def main():
         must_reject(label, args.output_dir / "invalid_topology.2")
     assert not (args.output_dir / "invalid_topology.2").exists()
 
+    # UV dobladas de origen: en makermale_elder.2 hay vértices cuyas caras tienen
+    # la UV en sentidos opuestos, y el .2 guarda un solo signo de bitangente.
+    # Antes rechazaban cualquier edición del modelo; ahora conservan el signo.
+    clear()
+    folded = args.assets_root / "characters/maker_elder/makermale_elder.2"
+    assert bpy.ops.import_scene.darksiders_dcm(filepath=str(folded)) == {"FINISHED"}
+    obj = next(o for o in bpy.context.scene.objects if o.get("anansi_mesh_index") == 1)
+    bpy.context.view_layer.objects.active = obj
+    original = modules["mesh"].load_dcm(folded).meshes[1]
+    mesh = obj.data
+    mesh.calc_tangents(uvmap=mesh.uv_layers.active.name)
+    signs = [set() for _ in mesh.vertices]
+    for loop in mesh.loops:
+        signs[loop.vertex_index].add(loop.bitangent_sign)
+    mesh.free_tangents()
+    mixed = [i for i, values in enumerate(signs) if len(values) > 1]
+    assert mixed, "la muestra ya no trae UV dobladas"
+    # Un vértice sin vecinos doblados: la edición no cambia el pliegue de nadie.
+    near_mixed = {v for p in mesh.polygons if set(p.vertices) & set(mixed) for v in p.vertices}
+    chosen = next(i for i in range(len(mesh.vertices)) if i not in near_mixed)
+    for loop, uv in zip(mesh.loops, mesh.uv_layers.active.data):
+        if loop.vertex_index == chosen:
+            uv.uv.x += 0.001
+    target = args.output_dir / "makermale_elder_uv.2"
+    roundtrip.export_asset(bpy.context, target, modules)
+    edited = modules["mesh"].load_dcm(target).meshes[1]
+    assert np.flatnonzero(np.any(edited.uvs != original.uvs, axis=1)).tolist() == [chosen]
+    np.testing.assert_array_equal(edited.positions, original.positions)
+    assert edited.submeshes == original.submeshes
+    before, after = _handedness(folded, original), _handedness(target, edited)
+    np.testing.assert_array_equal(after[mixed], before[mixed])
+    # El signo es el del juego salvo donde la edición lo invierte: lejos de ella no cambia.
+    assert set(np.flatnonzero(after != before).tolist()) <= _around(original, [chosen])
+    clear()
+    assert bpy.ops.import_scene.darksiders_dcm(filepath=str(target)) == {"FINISHED"}
+    results["folded_uv"] = {"file": "characters/maker_elder/makermale_elder.2", "folded_vertices": len(mixed),
+                            "edited_vertex": chosen, "signs_kept": True,
+                            "sign_changes": int(np.count_nonzero(after != before)), "reimported": True}
+
+    # BBFollowNode fuera de la paleta: las cajas de ese modelo están en
+    # Bone_MM_Junk y Bone_MM_Root, que solo trae makermale_elder_base.o3d. Mover
+    # vértices tiene que resolverlo igual con esa armadura en la escena o sin ella.
+    rig_path = folded.with_name("makermale_elder_base.o3d")
+    rig = modules["skeleton"].load_o3d(rig_path)
+    world = rig.world_matrices()
+    copies = []
+    for options in ({}, {"skeleton_path": str(rig_path)}):
+        clear()
+        assert bpy.ops.import_scene.darksiders_dcm(filepath=str(folded), **options) == {"FINISHED"}
+        for obj in [o for o in bpy.context.scene.objects if o.type == "MESH"]:
+            # El vértice más alto, para que salga de la caja de la malla 1, que es justa.
+            max(obj.data.vertices, key=lambda v: v.co.z).co.z += 2.0
+            obj.data.update()
+            bpy.context.view_layer.objects.active = obj
+        target = args.output_dir / f"makermale_elder_moved_{len(copies)}.2"
+        roundtrip.export_asset(bpy.context, target, modules)
+        copies.append(_split_tangents(target.read_bytes(), modules["mesh"].load_dcm(target).meshes))
+    # calc_tangents varía en el último bit entre dos exportaciones iguales;
+    # todo lo demás tiene que salir idéntico.
+    assert copies[0][0] == copies[1][0], "la copia depende de si hay armadura en la escena"
+    np.testing.assert_allclose(copies[0][1], copies[1][1], rtol=0, atol=1e-6)
+    sources = modules["mesh"].load_dcm(folded).meshes
+    for mesh, node in zip(modules["mesh"].load_dcm(target).meshes, ("Bone_MM_Junk", "Bone_MM_Root")):
+        before = sources[mesh.index]
+        moved = np.flatnonzero(np.any(mesh.positions != before.positions, axis=1))
+        assert moved.size == 1
+        changed = np.flatnonzero(_handedness(target, mesh) != _handedness(folded, before))
+        assert set(changed.tolist()) <= _around(before, moved), "cambió el signo lejos de lo editado"
+        points = (np.c_[mesh.positions, np.ones(mesh.vertex_count)] @ np.linalg.inv(world[rig.index_of(node)]))[:, :3]
+        box, old = np.asarray(mesh.bbox), np.asarray(before.bbox)
+        assert np.all(box[:3] <= old[:3]) and np.all(box[3:] >= old[3:]), "se perdieron los márgenes de la caja"
+        assert np.all(points.min(0) >= box[:3] - 1e-3) and np.all(points.max(0) <= box[3:] + 1e-3)
+        grown = int(np.count_nonzero(box != old))
+        assert grown or mesh.index == 0, "la caja de la malla 1 no creció"
+    results["box_outside_palette"] = {"file": "characters/maker_elder/makermale_elder.2",
+                                      "nodes": ["Bone_MM_Junk", "Bone_MM_Root"], "rig": rig_path.name,
+                                      "same_with_and_without_armature": True, "mesh_1_box_grew": True}
+
+    # Espejar en U la UV de un material entero invierte el signo de esos vértices,
+    # y solo de esos: el resto conserva el del juego.
+    clear()
+    assert bpy.ops.import_scene.darksiders_dcm(filepath=str(folded)) == {"FINISHED"}
+    obj = next(o for o in bpy.context.scene.objects if o.get("anansi_mesh_index") == 1)
+    bpy.context.view_layer.objects.active = obj
+    original = sources[1]
+    # Por su tramo en el .2: al reimportar, Blender renombra el material a elder_a.001.
+    beard = next(s for s in original.submeshes if s.name == "elder_a")
+    uv_data = obj.data.uv_layers.active.data
+    for polygon in obj.data.polygons[beard.index_start // 3:(beard.index_start + beard.index_count) // 3]:
+        for index in polygon.loop_indices:
+            uv_data[index].uv.x = 1.0 - uv_data[index].uv.x
+    target = args.output_dir / "makermale_elder_mirrored.2"
+    roundtrip.export_asset(bpy.context, target, modules)
+    mirrored = modules["mesh"].load_dcm(target).meshes[1]
+    rows = np.zeros(original.vertex_count, dtype=bool)
+    rows[beard.vertex_start:beard.vertex_start + beard.vertex_count] = True
+    before, after = _handedness(folded, original), _handedness(target, mirrored)
+    np.testing.assert_array_equal(after[rows], -before[rows])
+    np.testing.assert_array_equal(after[~rows], before[~rows])
+    np.testing.assert_array_equal(mirrored.positions, original.positions)
+    results["mirrored_uv"] = {"material": "elder_a", "flipped": int(rows.sum()), "kept": int((~rows).sum())}
+
     # La misma rotación en malla y rig. No aplica la pose al exportar.
     clear()
     rig = args.assets_root / "characters/death/death.o3d"
@@ -184,6 +286,33 @@ def main():
     bpy.ops.wm.save_as_mainfile(filepath=str(args.output_dir / "orientation_comparison.blend"))
     (args.output_dir / "results.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
     print("DARKSIDERS_QA_OK " + json.dumps(results))
+
+
+def _handedness(path, mesh):
+    """Signo de bitangente guardado (@48 del registro de vértice con piel)."""
+    n = mesh.vertex_count
+    at = mesh.data_base + 8 + mesh.indices.size * 2 + n * 20
+    return np.ndarray((n,), dtype="<f4", buffer=path.read_bytes(), offset=at + 48, strides=(52,)).copy()
+
+
+def _around(mesh, vertices):
+    """Los vértices y sus vecinos por cara, en filas del .2."""
+    touching = np.any(np.isin(mesh.indices, list(vertices)), axis=1)
+    return set(np.unique(mesh.indices[touching]).tolist())
+
+
+def _split_tangents(data, meshes):
+    """Los bytes del .2 con las tangentes xyz a cero, y esas tangentes aparte."""
+    data, tangents = bytearray(data), []
+    for mesh in meshes:
+        if not mesh.is_skinned:
+            continue
+        n = mesh.vertex_count
+        at = mesh.data_base + 8 + mesh.indices.size * 2 + n * 20
+        view = np.ndarray((n, 3), dtype="<f4", buffer=data, offset=at + 36, strides=(52, 4))
+        tangents.append(view.copy())
+        view[:] = 0
+    return bytes(data), np.concatenate(tangents)
 
 
 def _patch(obj, size):

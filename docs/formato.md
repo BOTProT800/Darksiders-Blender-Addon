@@ -289,11 +289,48 @@ vértices en el espacio del modelo. El exportador conserva los márgenes y ampl�
 la caja por unión con la nueva geometría en ese espacio. Si una caja no coincide
 y no se resuelve su `BBFollowNode`, rechaza editar posiciones.
 
+**`BBFollowNode` fuera de la paleta (2026-10-13).** El nodo no siempre está entre
+los huesos de la malla: en `makermale_elder.2` son `Bone_MM_Junk` (malla 0) y
+`Bone_MM_Root` (malla 1), y solo los trae `makermale_elder_base.o3d`. Su
+`inverse(world)` en ese esqueleto deja la geometría de la malla 1 exactamente en
+la caja declarada (error 0,0) y la de la malla 0 dentro. Al mover vértices, el
+exportador lo busca en el esqueleto elegido al importar, en los `.o3d` de la
+carpeta del `.2` y por último con `find_rig`, y solo acepta la matriz si la
+geometría original cabe en la caja declarada. En el corpus hay 1.439 mallas con
+la caja en otro espacio: la paleta resuelve 876; de las 563 restantes, 308 no
+traen nodo en su `.o3d` descriptor y siguen sin poder moverse; de las 255 con
+nodo, la carpeta resuelve 119 (ninguna ambigua) y `find_rig` 45 más.
+
 Registro skinned verificado: influencia u32 @0, posición xyz @4, w @16,
 normal xyz @20, **normal.z duplicada @32**, tangente xyz @36, signo @48.
 En `base_glovesa`, el signo almacenado coincide con el calculado usando la UV de
 Blender (`u,-v_juego`); con la V cruda del juego tiene el signo opuesto.
 Antes de escribir normales, se exige que la plantilla cumpla la duplicación @32.
+
+**El signo @48 (medido el 2026-10-13 sobre las 1.624 mallas con piel).** Vale
+exactamente ±1 en los 2.283.234 vértices. El formato guarda **uno por vértice**,
+y hay vértices cuyas caras tienen la UV en sentidos opuestos (triángulos de UV
+doblados): unas 371 mallas los traen de origen, 79 vértices en
+`characters/maker_elder/makermale_elder.2`, malla 1. Ahí `calc_tangents` de
+Blender da un signo por lado; el exportador conserva el de la plantilla (antes
+rechazaba cualquier edición del modelo). Fuera de los pliegues, el signo de
+Blender, que sale de la orientación UV de cada cara, discrepa del guardado en el
+1,2 % de los vértices (27.241 de 2.279.738, en 830 mallas): se concentra donde la
+UV está muy cizallada. Sumar por vértice la tangente y la bitangente de cada cara
+sin normalizar y tomar `signo(dot(N × T, B))` (el método de Lengyel) reproduce el
+99,86 % (2.280.043 de 2.283.234), pliegues incluidos: es lo más probable que
+usara la herramienta del juego.
+
+Desde el 2026-10-14 el exportador no toma el signo de Blender: parte del
+guardado y solo lo invierte donde la edición invierte el de Lengyel
+(`guardado × Lengyel(después) × Lengyel(antes)`). Donde no se toca nada, el signo
+del juego queda exacto, sin el 0,14 % de error de Lengyel; y como Lengyel es local,
+solo cambia alrededor de lo editado. En `makermale_elder.2`, editar la UV de un
+vértice cambiaba 58 signos repartidos por la malla y ahora ninguno; espejar en U la
+UV de `elder_a` invierte exactamente sus 1.786 vértices y deja los 7.919 de
+`elder_b`. La tangente, en cambio, sigue saliendo de Blender: Lengyel no reproduce
+la del juego (coseno > 0,9999 en el 83,3 % de los vértices; sumando las tangentes
+de cada cara normalizadas, el 91,5 %), así que no hay un método mejor que copiar.
 
 `io_darksiders/formats/native.py` parchea una plantilla, no inventa un formato:
 conserva tamaño, índices, cabeceras desconocidas, materiales, paletas y bind poses.
@@ -313,7 +350,9 @@ externo `characters/death/death.o3d`: sin deformación en reposo (<1e-3 unidades
 y vuelta idéntica. Render comparativo frontal inspeccionado. El test admite el
 ZIP extraído con `--addon-parent` para comprobar el addon empaquetado, sin el
 código del repositorio. Repetido el 2026-10-10 con el zip 2.0.0: mismos
-resultados.
+resultados. Repetido el 2026-10-14 con el zip 2.1.0, que añade los casos de
+`makermale_elder.2` (UV dobladas, caja en un nodo fuera de la paleta y signo de
+bitangente): todo correcto.
 **Pendiente**: prueba de una edición dentro del juego y reconstrucción libre de
 geometría/contenedores. El roundtrip binario no demuestra esa compatibilidad.
 

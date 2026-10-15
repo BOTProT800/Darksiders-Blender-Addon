@@ -30,6 +30,12 @@ piezas de equipo está en el espacio del hueso al que se acoplan
 señal independiente del espacio, las normales unitarias, para que el desajuste
 pase a aviso en lugar de error.
 
+**La caja también valida una búsqueda.** El nodo de la caja puede no estar en la
+paleta de la malla (`Bone_MM_Root` en `makermale_elder.2`): entonces hay que
+sacarlo de un esqueleto, y el esqueleto sale de buscar por la carpeta. Aceptarlo
+solo si la geometría original cabe en la caja declarada convierte esa búsqueda en
+algo verificable: en el corpus no hubo ni un caso ambiguo (2026-10-13).
+
 **Falsos amigos que cuestan una vuelta:**
 
 - el `0xFFFFFFFF` al final de cada registro de atributos no es un centinela de
@@ -37,7 +43,21 @@ pase a aviso en lugar de error.
 - `head[1]` vale 60 o 64, pero el stride real es 76 o 92;
 - un porcentaje bajo de UV en `[0,1]` no significa UV rotas: hay tiling a
   propósito (la guadaña de Reaper va de U −0,37 a 1,99). No reparar con
-  *Pack Islands*: rompería la correspondencia con la textura del juego.
+  *Pack Islands*: rompería la correspondencia con la textura del juego;
+- UV que se solapan en el editor no son una malla ajena colada: cada tramo de
+  material ocupa el cuadro [0,1] de **su** textura. En
+  `makermale_elder.2`, malla 1, `elder_b` (cuerpo, 10.608 caras,
+  `ElderB_diff` 2048×2048) y `elder_a` (cabeza, barba y pelo, 2.602 caras,
+  `ElderA_diff` 512×1024) se pisan con *UV Sync Selection*; con cada textura
+  en su material el render sale correcto (2026-10-13). Los 8 bytes entre la UV
+  y el color del registro de atributos con piel (@+8) tampoco son una segunda
+  UV: valen −69..75 en esa malla y su significado sigue sin saberse;
+- «UV espejadas comparten un vértice» no delataba una edición inválida. Los
+  assets traen triángulos de UV doblados de origen (unas 371 de las 1.624
+  mallas con piel) y el `.2` guarda un solo signo de bitangente por vértice;
+  el exportador rechazaba por eso **cualquier** edición de posición o UV de
+  esos modelos, aunque fuera lejos del pliegue. Desde el 2026-10-13 conserva
+  el signo de la plantilla.
 
 **Un lector de offsets fijos que «funciona» puede estar leyendo un formato
 autodescriptivo.** El script de 2014 lee el `.o3d` de Darksiders 1 como
@@ -99,6 +119,20 @@ barata y la que más errores atrapa.
 solo toca buffers verificados; los bloques desconocidos viajan intactos. Antes
 de escribir, relee la copia y la compara campo a campo; escribe en un temporal y
 lo mueve con `os.replace`; nunca sobreescribe el original.
+
+**Dos exportaciones iguales no salen idénticas al último bit.** Con la misma
+edición, `calc_tangents` de Blender devuelve tangentes que varían hasta 1,2e-7
+entre ejecuciones (1.332 de `makermale_elder.2`). La vuelta sin cambios sigue
+siendo byte idéntica porque no recalcula tangentes; las pruebas con ediciones
+comparan las tangentes con tolerancia y el resto byte a byte.
+
+**Recalcular no es reescribir.** Al editar, el exportador recalculaba el signo
+de bitangente de **todos** los vértices con el método de Blender, que no es el
+del juego, y una edición de un vértice cambiaba 58 signos repartidos por la malla.
+Medir el corpus dio el método del juego (Lengyel, 99,86 %), pero usarlo tal cual
+habría cambiado el 0,14 % restante. Lo fiel es relativo: conservar el dato
+original y aplicar solo el **cambio** que produce la edición según el método del
+juego (2026-10-14).
 
 **Rechazar con un mensaje que nombre el objeto** es mejor que exportar algo que
 no se sabe representar: fusionar, subdividir, una costura UV nueva, materiales

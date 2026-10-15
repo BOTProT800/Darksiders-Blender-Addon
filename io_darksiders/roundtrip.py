@@ -76,12 +76,12 @@ def _weights(obj, original, native, slot):
     return joints, result
 
 
-def _shading(obj, original, source, everywhere, slot, *, moved, native):
+def _shading(obj, original, source, everywhere, slot, positions, uvs, *, moved):
     """Calcula normales y tangentes en una copia temporal, sin editar la escena.
 
     ``everywhere`` trae la posición nativa de cada vértice de la escena y
-    ``slot`` su fila en la plantilla (-1 si no viaja); el resultado va en filas
-    de la plantilla.
+    ``slot`` su fila en la plantilla (-1 si no viaja); ``positions`` y ``uvs``
+    son la edición ya en filas de la plantilla, igual que el resultado.
     """
     import bpy
 
@@ -100,31 +100,96 @@ def _shading(obj, original, source, everywhere, slot, *, moved, native):
         mesh.update()
         mesh.calc_tangents(uvmap=mesh.uv_layers.active.name)
         n = original.vertex_count
-        normals = np.zeros((n, 3), dtype=np.float64)
-        tangents = np.zeros_like(normals)
-        signs = [set() for _ in range(n)]
+        rows, corner, tangent, sign = [], [], [], []
         for loop, normal in zip(mesh.loops, mesh.corner_normals):
-            i = slot[loop.vertex_index]
-            normals[i] += normal.vector
-            tangents[i] += loop.tangent
-            if loop.bitangent_sign:
-                signs[i].add(int(loop.bitangent_sign))
+            rows.append(slot[loop.vertex_index])
+            corner.append(tuple(normal.vector))
+            tangent.append(tuple(loop.tangent))
+            sign.append(loop.bitangent_sign)
         at = original.data_base + 8 + original.indices.size * 2 + n * 20
         old_tangents = np.ndarray((n, 4), dtype="<f4", buffer=source, offset=at + 36, strides=(52, 4))
-        handedness = []
-        for i, values in enumerate(signs):
-            if len(values) > 1:
-                raise native.DcmExportError("UV espejadas comparten un vértice: requieren dividir la topología")
-            if not values:
-                normals[i] = original.normals[i]
-                tangents[i] = old_tangents[i, :3]
-            handedness.append(next(iter(values), old_tangents[i, 3]))
-        normals /= np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-30)
-        tangents -= normals * np.sum(normals * tangents, axis=1, keepdims=True)
-        tangents /= np.maximum(np.linalg.norm(tangents, axis=1, keepdims=True), 1e-30)
-        return normals, np.c_[tangents, handedness]
+        return _tangent_frames(rows, corner, tangent, sign, original.normals, old_tangents, original.indices,
+                               (original.positions, original.uvs), (positions, uvs))
     finally:
         bpy.data.meshes.remove(mesh)
+
+
+def _tangent_frames(rows, corner_normals, loop_tangents, loop_signs, old_normals, old_tangents,
+                    faces, before, after):
+    """Una normal y una tangente con signo por fila de la plantilla, desde los loops.
+
+    La normal y la tangente salen de Blender. El signo no: el de `calc_tangents`
+    (orientación de la UV en cada cara) discrepa del que guarda el juego en el
+    1,2 % de los vértices, y el de Lengyel (`_lengyel_signs`) lo reproduce en el
+    99,86 %. Se parte del signo guardado y solo se invierte donde la edición
+    invierte el de Lengyel: ``before`` y ``after`` son (posiciones, UV) de la
+    plantilla y de la edición, y ``faces`` sus triángulos en filas. Donde la
+    edición no toca nada, el signo del juego queda tal cual.
+
+    Si las caras de un vértice tienen la UV en sentidos opuestos (triángulos
+    doblados, que los assets traen de origen: 79 vértices en
+    `makermale_elder.2`), Blender da una tangente por lado. Se promedian solo
+    las del lado del signo elegido, porque las del otro pueden apuntar al revés
+    y anularla. Las filas sin loops conservan normal y tangente.
+    """
+    n = len(old_normals)
+    rows = np.asarray(rows, dtype=np.int64).reshape(-1)
+    corner_normals = np.asarray(corner_normals, dtype=np.float64).reshape(-1, 3)
+    loop_tangents = np.asarray(loop_tangents, dtype=np.float64).reshape(-1, 3)
+    loop_signs = np.asarray(loop_signs, dtype=np.float64).reshape(-1)
+    old = np.asarray(old_tangents, dtype=np.float64)
+
+    normals = np.zeros((n, 3))
+    np.add.at(normals, rows, corner_normals)
+    tangents = np.zeros((n, 3))
+    np.add.at(tangents, rows, loop_tangents)
+    looped = np.zeros(n, dtype=bool)
+    looped[rows] = True
+    normals[~looped] = np.asarray(old_normals, dtype=np.float64)[~looped]
+    tangents[~looped] = old[~looped, :3]
+    normals /= np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-30)
+
+    handedness = (np.sign(old[:, 3]) * _lengyel_signs(*after, faces, normals)
+                  * _lengyel_signs(*before, faces, normals))
+    by_sign, present = {}, {}
+    for value in (-1.0, 1.0):
+        chosen = loop_signs == value
+        by_sign[value] = np.zeros((n, 3))
+        np.add.at(by_sign[value], rows[chosen], loop_tangents[chosen])
+        present[value] = np.zeros(n, dtype=bool)
+        present[value][rows[chosen]] = True
+    both = present[1.0] & present[-1.0]
+    tangents[both] = np.where((handedness[both] > 0)[:, None], by_sign[1.0][both], by_sign[-1.0][both])
+
+    tangents -= normals * np.sum(normals * tangents, axis=1, keepdims=True)
+    tangents /= np.maximum(np.linalg.norm(tangents, axis=1, keepdims=True), 1e-30)
+    return normals, np.c_[tangents, handedness]
+
+
+def _lengyel_signs(positions, uvs, faces, normals):
+    """Signo de bitangente por vértice, como lo calcula la herramienta del juego.
+
+    Método de Lengyel: la tangente y la bitangente de cada cara, sin normalizar,
+    se suman en sus vértices, y el signo es el de `dot(N × T, B)`. Reproduce
+    2.280.043 de los 2.283.234 signos de las mallas con piel del corpus, pliegues
+    de UV incluidos. ``uvs`` va en la convención del juego (V negada), como en
+    el `.2`; aquí se pasa a la de Blender, que es en la que cuadra.
+    """
+    points = np.asarray(positions, dtype=np.float64)
+    uv = np.asarray(uvs, dtype=np.float64) * (1.0, -1.0)
+    faces = np.asarray(faces, dtype=np.int64).reshape(-1, 3)
+    d1, d2 = uv[faces[:, 1]] - uv[faces[:, 0]], uv[faces[:, 2]] - uv[faces[:, 0]]
+    e1, e2 = points[faces[:, 1]] - points[faces[:, 0]], points[faces[:, 2]] - points[faces[:, 0]]
+    area = d1[:, 0] * d2[:, 1] - d2[:, 0] * d1[:, 1]
+    scale = np.divide(1.0, area, out=np.zeros_like(area), where=area != 0)[:, None]
+    face_t = (e1 * d2[:, 1:2] - e2 * d1[:, 1:2]) * scale
+    face_b = (e2 * d1[:, 0:1] - e1 * d2[:, 0:1]) * scale
+    t = np.zeros((len(points), 3))
+    b = np.zeros_like(t)
+    for corner in range(3):
+        np.add.at(t, faces[:, corner], face_t)
+        np.add.at(b, faces[:, corner], face_b)
+    return np.where(np.sum(np.cross(normals, t) * b, axis=1) < 0, -1.0, 1.0)
 
 
 def export_asset(context, target, modules):
@@ -216,8 +281,7 @@ def export_asset(context, target, modules):
         if moved or changed_uv:
             if not original.is_skinned:
                 raise native.DcmExportError("edición de mallas estáticas aún no soportada")
-            normals, tangents = _shading(obj, original, template, everywhere, slot, moved=moved,
-                                         native=native)
+            normals, tangents = _shading(obj, original, template, everywhere, slot, positions, uvs, moved=moved)
         joints = weights = None
         if original.is_skinned:
             joints, weights = _weights(obj, original, native, slot)
@@ -225,9 +289,54 @@ def export_asset(context, target, modules):
     boxes = {}
     o3d = modules["skeleton"].find_o3d(source_path)
     if o3d:
-        boxes = native.bounds_matrices(parsed, modules["skeleton"].parse_object3d(o3d.read_bytes()))
+        descriptor = modules["skeleton"].parse_object3d(o3d.read_bytes())
+        boxes = native.bounds_matrices(parsed, descriptor)
+        # Solo una malla movida necesita su caja, y solo si está en otro espacio.
+        pending = [index for index, edit in edits.items() if index not in boxes and parsed.meshes[index].warnings
+                   and not np.array_equal(edit.positions, parsed.meshes[index].positions)]
+        if pending:
+            rigs = _box_rigs(objects, source_path, parsed, pending, modules)
+            boxes.update(native.rig_bounds_matrices(parsed, descriptor, rigs, pending))
     output = native.patch_dcm(template, edits, boxes=boxes)
     return native.write_dcm_copy(Path(target), output, source=source_path)
+
+
+def _box_rigs(objects, source_path, parsed, pending, modules):
+    """Esqueletos donde buscar un BBFollowNode que la paleta no trae, del más fiable al menos.
+
+    Primero el que se eligió al importar, luego los `.o3d` de la carpeta del `.2`
+    y, si con eso no basta, el que más huesos de la paleta cubre (`find_rig`).
+    Es un generador: `native.rig_bounds_matrices` deja de pedir en cuanto
+    resuelve, y así `find_rig`, que recorre carpetas, casi nunca llega a correr.
+    """
+    from .animation_import import METADATA
+
+    skeleton = modules["skeleton"]
+
+    def paths():
+        for obj in objects:
+            for modifier in obj.modifiers:
+                rig = modifier.object if modifier.type == "ARMATURE" else None
+                if rig is not None and METADATA in rig:
+                    source = json.loads(rig[METADATA]).get("source")
+                    if source:
+                        yield Path(source)
+        yield from sorted(path for path in source_path.parent.iterdir() if path.suffix.casefold() == ".o3d")
+        names = sorted({bone.name for index in pending for bone in parsed.meshes[index].bones})
+        found, _ = skeleton.find_rig(source_path, names)
+        if found is not None:
+            yield found
+
+    seen = set()
+    for path in paths():
+        key = path.resolve()
+        if key in seen or not path.is_file():
+            continue
+        seen.add(key)
+        try:
+            yield skeleton.load_o3d(path)
+        except (ValueError, OSError):
+            continue  # un .o3d sin Skeleton (solo visuals) o ilegible no es candidato
 
 
 def _vertex_ids(obj, native):
