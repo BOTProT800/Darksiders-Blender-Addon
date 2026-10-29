@@ -85,13 +85,23 @@ def main():
             raise AssertionError(f"debía rechazar: {label}")
 
     must_reject("overwrite source", source)
+
+    def must_rebuild(label, destination, reason):
+        """Lo que no es un borrado reescribe la malla entera, y lo dice."""
+        notices = []
+        roundtrip.export_asset(bpy.context, destination, modules, notices)
+        assert any(reason in message for _level, message in notices), (label, notices)
+        rebuilt = modules["mesh"].load_dcm(destination)
+        assert all(mesh.health().ok for mesh in rebuilt.meshes), label
+        results.setdefault("rebuilt", []).append(label)
+        return rebuilt
+
     obj.data.uv_layers.active.data[0].uv.x += 0.2
-    must_reject("new UV seam", args.output_dir / "invalid_uv.2")
+    seam = must_rebuild("new UV seam", args.output_dir / "seam.2", "costura UV nueva")
+    assert seam.meshes[original.index].vertex_count == original.vertex_count + 1  # el vértice se parte
     obj.data.uv_layers.active.data[0].uv.x -= 0.2
     obj.data.attributes["anansi_vertex_id"].data[0].value = 99
-    must_reject("reordered vertices", args.output_dir / "invalid_topology.2")
-    assert not (args.output_dir / "invalid_uv.2").exists()
-    assert not (args.output_dir / "invalid_topology.2").exists()
+    must_rebuild("reordered vertices", args.output_dir / "reordered.2", "reordenados")
 
     # Borrado con el operador real de Blender, que es quien decide qué pasa con
     # anansi_vertex_id y con el orden; se combina con una edición de posición.
@@ -133,8 +143,54 @@ def main():
         assert bpy.ops.import_scene.darksiders_dcm(filepath=str(source)) == {"FINISHED"}
         obj = bpy.context.view_layer.objects.active
         _edit(obj, [list(obj.data.polygons[0].vertices)], operation, faces=True)
-        must_reject(label, args.output_dir / "invalid_topology.2")
+        if label == "subdivided edge":  # la subdivisión deja quads: hay que triangular
+            must_reject("quads after subdividing", args.output_dir / "invalid_topology.2")
+            _edit(obj, [list(range(len(obj.data.vertices)))], lambda: bpy.ops.mesh.quads_convert_to_tris())
+        rebuilt = must_rebuild(label, args.output_dir / f"{label.replace(' ', '_')}.2", "malla nueva")
+        assert rebuilt.meshes[obj["anansi_mesh_index"]].triangle_count == len(obj.data.polygons)
     assert not (args.output_dir / "invalid_topology.2").exists()
+    # Belial usa el segundo canal de atributos, de significado desconocido: sus
+    # mallas no se pueden reconstruir, solo borrar o editar sin tocar la topología.
+    clear()
+    assert bpy.ops.import_scene.darksiders_dcm(filepath=str(args.assets_root / cases[2])) == {"FINISHED"}
+    obj = bpy.context.view_layer.objects.active
+    _edit(obj, [list(obj.data.polygons[0].vertices)], lambda: bpy.ops.mesh.merge(type="CENTER"), faces=True)
+    must_reject("unknown attribute channel", args.output_dir / "invalid_topology.2")
+
+    # Caso del usuario (2026-10-17): vaciar una hombrera y meterle la de otro
+    # modelo uniéndola con Ctrl+J. La paleta de ds1a01 solo trae Bone_Clavicle_L
+    # y tiene un material: la malla nueva va rígida a ese hueso y a ese material.
+    clear()
+    armor = args.assets_root / "items/armor"
+    assert bpy.ops.import_scene.darksiders_dcm(filepath=str(armor / "ds1a01_shoulder.2"),
+                                               import_skeleton=False) == {"FINISHED"}
+    holder = bpy.context.view_layer.objects.active
+    _edit(holder, [list(range(len(holder.data.vertices)))], lambda: bpy.ops.mesh.delete(type="VERT"))
+    assert bpy.ops.import_scene.darksiders_dcm(filepath=str(armor / "slayerb01_shoulder.2"),
+                                               import_skeleton=False) == {"FINISHED"}
+    donor = bpy.context.view_layer.objects.active
+    bpy.ops.object.select_all(action="DESELECT")
+    donor.select_set(True)
+    holder.select_set(True)
+    bpy.context.view_layer.objects.active = holder
+    assert bpy.ops.object.join() == {"FINISHED"}
+    target = args.output_dir / "ds1a01_shoulder.2"
+    notices = []
+    roundtrip.export_asset(bpy.context, target, modules, notices)
+    texts = " | ".join(message for _level, message in notices)
+    assert "rígida a Bone_Clavicle_L" in texts and "«DS1A01_Shoulder»" in texts, texts
+    replaced = modules["mesh"].load_dcm(target).meshes[0]
+    other = modules["mesh"].load_dcm(armor / "slayerb01_shoulder.2").meshes[0]
+    assert [bone.name for bone in replaced.bones] == ["Bone_Clavicle_L"]
+    assert replaced.triangle_count == other.triangle_count and replaced.health().ok
+    np.testing.assert_allclose(np.sort(replaced.positions[replaced.indices].reshape(-1, 9), axis=0),
+                               np.sort(other.positions[other.indices].reshape(-1, 9), axis=0), atol=1e-4)
+    np.testing.assert_array_equal(replaced.joints, 0)
+    clear()
+    assert bpy.ops.import_scene.darksiders_dcm(filepath=str(target), import_skeleton=False) == {"FINISHED"}
+    results["replaced_mesh"] = {"template": "items/armor/ds1a01_shoulder.2", "donor": "items/armor/slayerb01_shoulder.2",
+                                "vertices": replaced.vertex_count, "triangles": replaced.triangle_count,
+                                "notices": notices, "reimported": True}
 
     # UV dobladas de origen: en makermale_elder.2 hay vértices cuyas caras tienen
     # la UV en sentidos opuestos, y el .2 guarda un solo signo de bitangente.

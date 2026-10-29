@@ -11,40 +11,17 @@ en [`AGENTS.md`](AGENTS.md), regla 6.
 - Ninguna herramienta externa se redistribuye, y el repositorio no contiene
   archivos del juego.
 
-Casi todas estas entradas vienen del `CREDITS.md` de ANANSI, donde se
-registraron entre el 2026-08-27 y el 2026-10-07; al trasladarse el addon
-(2026-10-10) se copiaron con las rutas de este repositorio. La fecha de
-incorporación es la original.
+Las fechas de incorporación anteriores al 2026-10-10 son de la 1.x.
 
 ---
 
-## 1. Código de origen
-
-### ANANSI — commit `e77e9bf` (2026-10-10)
-- **Autor / Organización:** BOTProT800
-- **Fuente:** https://github.com/BOTProT800/ANANSI
-- **Licencia:** MIT (archivo `LICENSE` del repositorio, «Copyright (c) 2026 BOTProT800»)
-- **Fecha de incorporación:** 2026-10-10
-- **Dónde se usa:** todo `io_darksiders/`, `tests/`, `scripts/` y `docs/`
-- **Para qué nos sirvió:** es donde se escribió el addon hasta la 1.4.0. Los
-  parsers (`services/darksiders/`), el addon (`tools/blender/io_anansi_darksiders/`),
-  sus pruebas, los scripts de QA y la documentación se trasladaron aquí, y
-  `io_darksiders/formats/quality.py` es la parte de
-  `services/common/mesh_quality.py` que usaban los parsers.
-- **Modificaciones:** los parsers pasan de `services/darksiders/` a
-  `io_darksiders/formats/` con imports relativos; fuera los conversores a OBJ y
-  GLB, la contabilidad, la cancelación y el progreso de la interfaz de ANANSI;
-  el OBP solo saca modelos, esqueletos y animaciones y sanea los nombres; el
-  addon cambia de id (`io_anansi_darksiders` → `io_darksiders`) y deja de copiar
-  los parsers a `_vendor/`.
-
-## 2. Dependencias y herramientas de desarrollo
+## 1. Dependencias y herramientas de desarrollo
 
 ### NumPy — v2.5.1 (pyproject: `>=1.26.0`)
 - **Autor / Organización:** Travis E. Oliphant et al. / NumPy Developers
 - **Fuente:** https://numpy.org
 - **Licencia:** `BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0`
-- **Fecha de incorporación:** 2026-08-27 (preexistente en ANANSI)
+- **Fecha de incorporación:** 2026-08-27
 - **Dónde se usa:** `io_darksiders/formats/`, `io_darksiders/roundtrip.py`,
   `io_darksiders/animation_import.py`, `tests/`, `scripts/`
 - **Para qué nos sirvió:** leer y escribir los buffers del `.2` con stride
@@ -58,7 +35,7 @@ incorporación es la original.
   Floris Bruynooghe, Brianna Laugher, Florian Bruhin y otros (ver AUTHORS)
 - **Fuente:** https://docs.pytest.org
 - **Licencia:** `MIT`
-- **Fecha de incorporación:** 2026-08-27 (preexistente en ANANSI)
+- **Fecha de incorporación:** 2026-08-27
 - **Dónde se usa:** `tests/`
 - **Para qué nos sirvió:** la suite que protege los parsers y el cableado del
   addon sin Blender.
@@ -68,17 +45,17 @@ incorporación es la original.
 - **Autor / Organización:** Astral Software Inc.
 - **Fuente:** https://docs.astral.sh/ruff
 - **Licencia:** `MIT`
-- **Fecha de incorporación:** 2026-08-31 (en ANANSI)
+- **Fecha de incorporación:** 2026-08-31
 - **Dónde se usa:** `pyproject.toml` (`[tool.ruff]`)
-- **Para qué nos sirvió:** detectar errores reales sin reglas de estilo. En
-  ANANSI la carpeta del addon estaba excluida; aquí se revisa entero.
+- **Para qué nos sirvió:** detectar errores reales sin reglas de estilo. En la
+  1.x la carpeta del addon estaba excluida; ahora se revisa entero.
 - **Modificaciones:** ninguna; reglas `E4`, `E7`, `E9`, `F`
 
 ### Blender — v5.2.2 LTS (mínimo declarado: 4.2.0)
 - **Autor / Organización:** Blender Foundation
 - **Fuente:** https://www.blender.org/
 - **Licencia:** GNU GPL v2 o posterior (la aplicación) — **no se redistribuye**
-- **Fecha de incorporación:** 2026-09-02 (en ANANSI)
+- **Fecha de incorporación:** 2026-09-02
 - **Dónde se usa:** destino del addon (`io_darksiders/`); `scripts/build.py`
   invoca `blender --command extension validate`; los scripts `qa_*` lo
   ejecutan en segundo plano.
@@ -97,7 +74,7 @@ incorporación es la original.
   https://docs.blender.org/manual/en/4.2/render/shader_nodes/textures/image.html
 - **Licencia:** CC-BY-SA-4.0 (texto; se excluyen logos, marcas, iconos y código).
   Declaración: https://docs.blender.org/manual/ar/4.2/copyright.html
-- **Fecha de incorporación:** 2026-09-15 (en ANANSI; consulta documental)
+- **Fecha de incorporación:** 2026-09-15 (consulta documental)
 - **Dónde se usa:** `io_darksiders/blender_manifest.toml`, `scripts/build.py`,
   `docs/formato.md` (UV de la guadaña de Reaper)
 - **Para qué nos sirvió:** confirmar que Blender instala las extensiones en
@@ -109,7 +86,7 @@ incorporación es la original.
 - **Autor / Organización:** Ero Carrera y colaboradores
 - **Fuente:** https://github.com/erocarrera/pefile/blob/master/LICENSE
 - **Licencia:** MIT
-- **Fecha de incorporación:** 2026-09-16 (en ANANSI)
+- **Fecha de incorporación:** 2026-09-16
 - **Dónde se usa:** `scripts/qa_animation_native.py` (opcional, solo QA); no se
   incluye en el addon.
 - **Para qué nos sirvió:** localizar secciones y direcciones del ejecutable PE
@@ -120,7 +97,7 @@ incorporación es la original.
 - **Autor / Organización:** Unicorn Engine contributors
 - **Fuente:** https://github.com/unicorn-engine/unicorn
 - **Licencia:** GPL-2.0 (motor); componentes internos según sus avisos
-- **Fecha de incorporación:** 2026-09-16 (en ANANSI)
+- **Fecha de incorporación:** 2026-09-16
 - **Dónde se usa:** `scripts/qa_animation_native.py` (opcional, solo QA); no se
   incluye en el addon ni se redistribuye.
 - **Para qué nos sirvió:** ejecutar aisladamente las rutinas matemáticas del
@@ -132,7 +109,7 @@ incorporación es la original.
 - **Autor / Organización:** Nguyen Anh Quynh / COSEINC y colaboradores
 - **Fuente:** https://github.com/capstone-engine/capstone/blob/5.0.6/LICENSE.TXT
 - **Licencia:** BSD-3-Clause
-- **Fecha de incorporación:** 2026-09-16 (en ANANSI)
+- **Fecha de incorporación:** 2026-09-16
 - **Dónde se usa:** ninguno en este repositorio; investigación local de `.anm`
   con herramientas temporales que no se versionaron.
 - **Para qué nos sirvió:** desensamblar funciones del ejecutable instalado para
@@ -140,7 +117,7 @@ incorporación es la original.
   apartado ANM).
 - **Modificaciones:** ninguna
 
-## 3. Fuentes de ingeniería inversa
+## 2. Fuentes de ingeniería inversa
 
 Ninguna declara licencia. Se estudiaron como especificación; **no se copió ni
 derivó código** de ninguna.
@@ -195,9 +172,9 @@ derivó código** de ninguna.
 - **Para qué nos sirvió:** la única fuente pública que documenta el contenedor
   **OBP** y la única que lee `.o3d`: qué se guarda por nodo, que las rotaciones
   van en grados y que la cabecera por malla del `.2` lleva **un** byte de tipo.
-- **Modificaciones:** ninguna — no se copió código. En ANANSI hubo una copia
-  literal del pack de Deathinitive (`tools/blender/darksiders2/`) como
-  documentación; no se trasladó aquí. Dos hallazgos propios se apartan de sus
+- **Modificaciones:** ninguna — no se copió código. Durante la 1.x hubo una
+  copia literal del pack de Deathinitive como documentación; aquí no se
+  incluye. Dos hallazgos propios se apartan de sus
   scripts: el `u32` que precede al blob del OBP es el tamaño **descomprimido**, y
   el `.o3d` de Deathinitive **no** son registros fijos de 116 bytes sino un
   contenedor `BOD` de objetos etiquetados.
@@ -232,9 +209,9 @@ derivó código** de ninguna.
   https://github.com/KhronosGroup/glTF-Validator
 - **Licencia:** Desconocida — verificar (la especificación de Khronos; el
   validador tiene la suya en su repositorio)
-- **Fecha de incorporación:** 2026-08-27 (en ANANSI)
+- **Fecha de incorporación:** 2026-08-27
 - **Dónde se usa:** `docs/formato.md`, apartado «Rig» (histórico: el exportador
-  GLB de ANANSI no se trasladó)
+  GLB de antes de la 2.0.0 no se conserva)
 - **Para qué nos sirvió:** su validador destapó que una inverse bind matrix
   tiene que ser afín exacta (`ACCESSOR_INVALID_IBM`).
 - **Modificaciones:** n/a
@@ -255,20 +232,23 @@ derivó código** de ninguna.
   signo; no se copió código del artículo. La medición del corpus se hizo con un
   script local, fuera del repositorio.
 
-## 4. Proyectos y datos locales
+## 3. Proyectos y datos locales
 
-### Darksiders2DLL — v0.8.1-deletion-trial (consultado el 2026-10-10)
+### Darksiders2DLL — v0.9.0-unchecked-trial (código sin publicar, consultado el 2026-10-17)
 - **Autor / Organización:** BOTProT800 (propietario del repositorio)
 - **Fuente:** https://github.com/BOTProT800/Darksiders2DLL
 - **Licencia:** Desconocida — verificar (sin licencia propia localizada en el clon)
-- **Fecha de incorporación:** 2026-09-16 (en ANANSI; consulta local, no se incorpora el binario)
+- **Fecha de incorporación:** 2026-09-16 (consulta local, no se incorpora el binario)
 - **Dónde se usa:** `README.md` («Cargarlo en el juego»), `docs/formato.md`,
   `docs/aprendizajes.md`, `docs/historial/estado-2026-09-16.md`
 - **Para qué nos sirvió:** es el cargador que sustituye en memoria los recursos
   de `media.upak`, la única vía conocida para ver en el juego lo que exporta el
   addon. Sus registros y su validador fuera del juego mostraron en septiembre
   que exportar bien y cargar son contratos distintos; su README del 2026-10-10
-  documenta que la 0.8.1 acepta geometría borrada en mallas con piel.
+  documenta que la 0.8.1 acepta geometría borrada en mallas con piel. Su
+  `research/MODEL_TRIAL.md` del 2026-10-17 (`override_unchecked`: misma cabecera,
+  cada material dentro de sus vértices y triángulos originales) decidió que la
+  malla nueva del addon 2.2.0 conserve paleta y materiales y avise del tamaño.
 - **Modificaciones:** ninguna; consulta, sin copiar código ni distribuir la DLL.
 
 ### Muestras locales de Darksiders II: Deathinitive Edition — versión no determinada
@@ -276,7 +256,7 @@ derivó código** de ninguna.
 - **Fuente:** archivos del usuario en `C:/Users/vicen/Documents/Extractions/Darksiders/media/`;
   sin URL pública verificada
 - **Licencia:** Desconocida — verificar. No se incluyen en git ni en el zip.
-- **Fecha de incorporación:** 2026-09-15 (en ANANSI; uso para verificación local)
+- **Fecha de incorporación:** 2026-09-15 (uso para verificación local)
 - **Dónde se usa:** `scripts/qa_blender.py`, `scripts/qa_animation_blender.py`,
   `scripts/qa_animation_corpus.py`, `scripts/qa_animation_native.py`
 - **Para qué nos sirvió:** contrastar winding, orientación, normales, tangentes
@@ -288,19 +268,19 @@ derivó código** de ninguna.
   copió código del ejecutable ni se redistribuyeron sus bytes.
 - **Modificaciones:** originales intactos; copias de QA bajo `temp/`, fuera de git.
 
-## 5. Asistentes de IA
+## 4. Asistentes de IA
 
 ### Claude Code — versión de la aplicación no determinada
 - **Autor / Organización:** Anthropic
 - **Fuente:** https://code.claude.com/docs
 - **Licencia:** Desconocida — verificar (aplicación de escritorio y su documentación)
 - **Fecha de incorporación:** 2026-10-10
-- **Dónde se usa:** todo el repositorio (traslado desde ANANSI);
+- **Dónde se usa:** todo el repositorio (la 2.0.0);
   `io_darksiders/roundtrip.py`, `io_darksiders/formats/native.py`,
   `tests/test_roundtrip.py`, `tests/test_native.py` y `scripts/qa_blender.py`
   (2026-10-13 y 2026-10-14)
-- **Para qué nos sirvió:** como agente, se usó para trasladar el addon desde
-  ANANSI: reorganizar los parsers dentro del paquete, adaptar tests y scripts,
+- **Para qué nos sirvió:** como agente, se usó para preparar la 2.0.0:
+  reorganizar los parsers dentro del paquete, adaptar tests y scripts,
   reescribir el empaquetador, sanear los nombres del OBP, repetir el QA en
   Blender 5.2.2 con el zip 2.0.0 y escribir esta documentación. El 2026-10-13,
   diagnosticar las UV de `makermale_elder.2`, quitar el rechazo de la
@@ -312,9 +292,9 @@ derivó código** de ninguna.
 - **Autor / Organización:** OpenAI
 - **Fuente:** https://openai.com/codex/
 - **Licencia:** Desconocida — verificar (aplicación y herramientas de agente)
-- **Fecha de incorporación:** 2026-09-15 (en ANANSI; registro de uso)
-- **Dónde se usa:** historia del addon en ANANSI
-- **Para qué nos sirvió:** como agente, en ANANSI: diagnóstico de orientación,
+- **Fecha de incorporación:** 2026-09-15 (registro de uso)
+- **Dónde se usa:** historia del addon (1.x)
+- **Para qué nos sirvió:** como agente, en la 1.x: diagnóstico de orientación,
   recorrido de importación y exportación `.2`, diagnóstico de la copia de
   `death_head.2` e informe `docs/historial/estado-2026-09-16.md`.
 - **Modificaciones:** ninguna.

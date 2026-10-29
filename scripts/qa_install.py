@@ -51,7 +51,7 @@ def inside_blender(sample: Path) -> None:
     out["importa"] = bpy.ops.import_scene.darksiders_dcm(filepath=str(sample)) == {"FINISHED"}
     loaded = Path(sys.modules[MODULE + ".formats.mesh"].__file__).resolve()
     out["parsers_desde_su_carpeta"] = loaded.is_relative_to(folder.resolve())
-    out["sin_rastro_de_anansi"] = not any(name == "services" or name.startswith("services.")
+    out["sin_paquete_services"] = not any(name == "services" or name.startswith("services.")
                                           for name in sys.modules)
 
     confirm = bpy.types.WindowManager.bl_rna.functions["invoke_confirm"].parameters

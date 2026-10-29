@@ -19,11 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-This licence covers the ANANSI source code only.
-
-Third-party components redistributed under tools/ keep their own licences,
-including GPL-3.0 material (PredatorCZ Havok Toolset). They are aggregated,
-not derived from, and are invoked as separate processes. See CREDITS.md.

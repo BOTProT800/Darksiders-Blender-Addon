@@ -579,7 +579,7 @@ def _build_mesh(collection, mesh_plan, bone_names, materials):
 
 
 class DARKSIDERS_OT_export_dcm(Operator, ExportHelper):
-    """Exporta una copia .2 del modelo importado activo; admite borrar vértices y caras"""
+    """Exporta una copia .2 del modelo importado activo; admite borrar y, en mallas con piel, geometría nueva"""
 
     bl_idname = "export_scene.darksiders_dcm"
     bl_label = "Exportar copia Darksiders (.2)"
@@ -599,8 +599,9 @@ class DARKSIDERS_OT_export_dcm(Operator, ExportHelper):
 
     def draw(self, context):
         self.layout.label(text="Modelo completo de la malla activa")
-        self.layout.label(text="Se puede borrar geometría; no añadir ni fusionar")
-        self.layout.label(text="Conservar esqueleto y materiales originales")
+        self.layout.label(text="Borrar conserva los registros originales")
+        self.layout.label(text="Geometría nueva (piel): se reescribe la malla")
+        self.layout.label(text="Conservar esqueleto, paleta y materiales originales")
         active = context.view_layer.objects.active
         source = active.get(roundtrip.PREFIX + "source") if active is not None else None
         if source:
@@ -609,12 +610,16 @@ class DARKSIDERS_OT_export_dcm(Operator, ExportHelper):
     def execute(self, context):
         try:
             _leave_edit_mode(context)
-            target = roundtrip.export_asset(context, self.filepath, modules())
+            notices = []
+            target = roundtrip.export_asset(context, self.filepath, modules(), notices)
         except Exception as exc:  # noqa: BLE001
             traceback.print_exc()
             print(f"[Darksiders] ERROR: {exc}")
             self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}
+        for level, message in notices:
+            self.report({level}, message)
+            print(f"[Darksiders] {level}: {message}")
         self.report({"INFO"}, f"Copia .2 exportada: {target.name}")
         print(f"[Darksiders] INFO: Copia .2 exportada: {target}")
         source_name = Path(context.view_layer.objects.active[roundtrip.PREFIX + "source"]).name

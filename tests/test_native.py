@@ -9,10 +9,12 @@ from io_darksiders.formats.native import (
     DcmExportError,
     MeshEdit,
     MeshSubset,
+    NewMesh,
     bounds_matrices,
     deletion_subset,
     patch_dcm,
     prune_dcm,
+    rebuild_dcm,
     rig_bounds_matrices,
 )
 from io_darksiders.formats.skeleton import Bone, Skeleton
@@ -251,6 +253,133 @@ class PruneTests(unittest.TestCase):
                 deletion_subset(mesh, vertex_ids, polygons)
         with self.assertRaises(DcmExportError):
             prune_dcm(self.raw, {0: MeshSubset(np.array([0, 2, 1]), np.array([0]))})
+
+
+def _plain_colours(raw: bytes) -> bytes:
+    """El fixture con un solo color por malla, como 1.623 de las 1.624 mallas con piel."""
+    out = bytearray(raw)
+    for mesh in parse_dcm(raw).meshes:
+        if mesh.is_skinned:
+            at = mesh.data_base + 8 + mesh.indices.size * 2
+            for row in range(mesh.vertex_count):
+                out[at + 20 * row + 16:at + 20 * row + 20] = b"\xff\xff\xff\xff"
+    return bytes(out)
+
+
+def _new_mesh(positions, triangles, spans, *, bone=1):
+    """Una malla nueva válida: normal +Z, tangente +X y todo el peso en ``bone``."""
+    n = len(positions)
+    weights = np.zeros((n, 4))
+    weights[:, 0] = 1.0
+    joints = np.zeros((n, 4))
+    joints[:, 0] = bone
+    return NewMesh(positions=np.asarray(positions, dtype=np.float32),
+                   uvs=np.asarray([(0.1 * i, -0.05 * i) for i in range(n)], dtype=np.float32),
+                   normals=np.tile([0.0, 0.0, 1.0], (n, 1)), tangents=np.tile([1.0, 0.0, 0.0, -1.0], (n, 1)),
+                   joints=joints, weights=weights, triangles=np.asarray(triangles), spans=np.asarray(spans))
+
+
+# Tres tramos (MatA, MatB, MatC) con sus vértices propios, desordenados a propósito:
+# el escritor tiene que agruparlos por tramo.
+NEW_POINTS = [(0, 0, 0), (9, 0, 0), (0, 9, 0), (20, 0, 0), (29, 0, 0), (20, 9, 3),
+              (40, 0, 0), (49, 0, 0), (40, 9, 0), (49, 9, 6), (0, 9, 9)]
+NEW_TRIS = [(3, 4, 5), (0, 1, 2), (6, 7, 8), (7, 9, 8), (0, 2, 10)]
+NEW_SPANS = [1, 0, 2, 2, 0]
+
+
+class RebuildTests(unittest.TestCase):
+    def setUp(self):
+        self.raw = _plain_colours(build_pruneable())
+        self.parsed = parse_dcm(self.raw)
+
+    def test_new_geometry_replaces_the_mesh_and_keeps_the_rest(self):
+        new = _new_mesh(NEW_POINTS, NEW_TRIS, NEW_SPANS)
+        result = rebuild_dcm(self.raw, {0: new})
+        after, before = parse_dcm(result).meshes, self.parsed.meshes
+        mesh = after[0]
+        self.assertEqual((mesh.vertex_count, mesh.triangle_count), (11, 5))
+        # Tramos en el orden de la plantilla, contiguos en índices y en vértices.
+        self.assertEqual([(s.name, s.index_start, s.index_count, s.vertex_start, s.vertex_count)
+                          for s in mesh.submeshes],
+                         [("MatA", 0, 6, 0, 4), ("MatB", 6, 3, 4, 3), ("MatC", 9, 6, 7, 4)])
+        np.testing.assert_array_equal(mesh.positions[:4], np.asarray(NEW_POINTS)[[0, 1, 2, 10]])
+        np.testing.assert_array_equal(mesh.indices[:2], [[0, 1, 2], [0, 2, 3]])  # sentido de Blender
+        self.assertEqual(mesh.bones, before[0].bones)
+        np.testing.assert_array_equal(mesh.joints[:, 0], 1)
+        np.testing.assert_array_equal(mesh.influences, 1)
+        self.assertTrue(mesh.health().ok)
+        for k in (1, 2):  # las mallas siguientes se mueven sin cambiar
+            np.testing.assert_array_equal(after[k].positions, before[k].positions)
+            np.testing.assert_array_equal(after[k].indices, before[k].indices)
+            self.assertEqual(after[k].submeshes, before[k].submeshes)
+        self.assertEqual(result[:8], self.raw[:8])
+
+    def test_fields_blender_does_not_give_take_the_corpus_values(self):
+        result = rebuild_dcm(self.raw, {0: _new_mesh(NEW_POINTS, NEW_TRIS, NEW_SPANS)})
+        mesh = parse_dcm(result).meshes[0]
+        at = mesh.data_base + 8 + mesh.indices.size * 2
+        attrs = np.frombuffer(result, np.uint8, 11 * 20, at).reshape(11, 20)
+        vertex = np.frombuffer(result, "<f4", 11 * 13, at + 11 * 20).reshape(11, 13)
+        self.assertFalse(attrs[:, 8:16].any())                       # segundo canal a cero
+        np.testing.assert_array_equal(attrs[:, 16:20], 255)          # color de la plantilla
+        np.testing.assert_array_equal(vertex[:, 4], 1.0)             # +16
+        np.testing.assert_array_equal(vertex[:, 8], vertex[:, 7])    # normal.z repetida en +32
+        np.testing.assert_array_equal(vertex[:, 12], -1.0)           # signo de bitangente
+        np.testing.assert_array_equal(mesh.joints[:, 1:], 0)         # ranuras vacías
+
+    def test_the_box_grows_with_the_new_geometry(self):
+        points = np.asarray(NEW_POINTS, dtype=float)
+        result = parse_dcm(rebuild_dcm(self.raw, {0: _new_mesh(points, NEW_TRIS, NEW_SPANS)})).meshes[0]
+        old = np.asarray(self.parsed.meshes[0].bbox)
+        np.testing.assert_allclose(result.bbox[:3], np.minimum(old[:3], points.min(0)))
+        np.testing.assert_allclose(result.bbox[3:], np.maximum(old[3:], points.max(0)))
+
+    def test_the_last_mesh_and_a_smaller_mesh(self):
+        new = _new_mesh([(0, 0, 0), (1, 0, 0), (0, 1, 0)], [(0, 1, 2)], [0], bone=0)
+        after = parse_dcm(rebuild_dcm(self.raw, {2: new})).meshes
+        self.assertEqual((after[2].vertex_count, after[2].triangle_count), (3, 1))
+        start, end = struct.unpack_from("<I", self.raw)[0], self.parsed.meshes[2].data_base
+        self.assertEqual(rebuild_dcm(self.raw, {2: new})[start:end], self.raw[start:end])
+
+    def test_what_cannot_be_written_is_rejected(self):
+        good = dict(positions=NEW_POINTS, triangles=NEW_TRIS, spans=NEW_SPANS)
+        shared = _new_mesh(**{**good, "triangles": NEW_TRIS[:4] + [(0, 2, 3)]})  # el 3 en MatA y MatB
+        empty = _new_mesh(**{**good, "spans": [1, 0, 1, 1, 0]})                  # MatC sin triángulos
+        outside = _new_mesh(**good, bone=2)                                     # la paleta tiene 2
+        loose = _new_mesh(**{**good, "triangles": NEW_TRIS[:4], "spans": NEW_SPANS[:4]})
+        unnormalised = _new_mesh(**good)
+        unnormalised.weights[:, 0] = 0.5
+        cases = {"dos materiales": shared, "MatC": empty, "paleta": outside, "sin triángulo": loose,
+                 "sin normalizar": unnormalised}
+        for message, new in cases.items():
+            with self.subTest(message), self.assertRaisesRegex(DcmExportError, message):
+                rebuild_dcm(self.raw, {0: new})
+        with self.assertRaisesRegex(DcmExportError, "estáticas"):
+            rebuild_dcm(self.raw, {1: _new_mesh(NEW_POINTS[:3], [(0, 1, 2)], [0])})
+
+    def test_unknown_or_per_vertex_data_in_the_template_is_not_invented(self):
+        new = _new_mesh(NEW_POINTS, NEW_TRIS, NEW_SPANS)
+        with self.assertRaisesRegex(DcmExportError, "color por vértice"):
+            rebuild_dcm(build_pruneable(), {0: new})
+        raw = bytearray(self.raw)
+        mesh = self.parsed.meshes[0]
+        at = mesh.data_base + 8 + mesh.indices.size * 2
+        raw[at + 8:at + 12] = struct.pack("<f", 2.5)
+        with self.assertRaisesRegex(DcmExportError, "segundo canal"):
+            rebuild_dcm(bytes(raw), {0: new})
+
+    def test_a_box_in_another_space_needs_its_node(self):
+        raw = bytearray(self.raw)
+        mesh = self.parsed.meshes[2]
+        box = np.r_[mesh.positions.min(0), mesh.positions.max(0)] - [0, 0, 10, 0, 0, 10]
+        raw[mesh.bbox_offset:mesh.bbox_offset + 24] = box.astype("<f4").tobytes()
+        new = _new_mesh([(0, 0, 0), (1, 0, 0), (0, 1, 2)], [(0, 1, 2)], [0], bone=0)
+        with self.assertRaisesRegex(DcmExportError, "BBFollowNode"):
+            rebuild_dcm(bytes(raw), {2: new})
+        node = np.eye(4)
+        node[3, 2] = -10.0
+        result = parse_dcm(rebuild_dcm(bytes(raw), {2: new}, boxes={2: node})).meshes[2]
+        self.assertAlmostEqual(result.bbox[5], max(box[5], 2 - 10), places=5)
 
 
 class FollowNodeOutsidePaletteTests(unittest.TestCase):

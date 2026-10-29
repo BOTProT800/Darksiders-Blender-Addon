@@ -276,7 +276,7 @@ def test_cada_version_trae_el_boton_de_desinstalar(addon, monkeypatch) -> None:
 
 
 def test_las_preferencias_no_guardan_ninguna_ruta(addon) -> None:
-    """Hasta la 1.3.0 había una «Carpeta de ANANSI» que nadie sabía para qué era.
+    """Hasta la 1.3.0 había una carpeta en las preferencias que nadie sabía para qué era.
     El addon no necesita configurar nada: sus preferencias no tienen propiedades."""
     module, _ = addon
     assert not getattr(module.DarksidersPreferences, "__annotations__", {})

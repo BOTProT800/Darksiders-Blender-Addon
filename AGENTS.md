@@ -12,8 +12,7 @@ alcance por decisión del usuario** (2026-10-10): no se añaden sin que lo pida.
 Tampoco hay conversores a OBJ/GLB fuera de Blender; para eso están los
 exportadores de Blender.
 
-El addon nació en ANANSI y se independizó en la 2.0.0. Antes de investigar un
-formato, lee [`docs/formato.md`](docs/formato.md) y
+Antes de investigar un formato, lee [`docs/formato.md`](docs/formato.md) y
 [`docs/aprendizajes.md`](docs/aprendizajes.md): casi todo lo que parece nuevo ya
 se midió.
 

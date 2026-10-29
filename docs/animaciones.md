@@ -1,9 +1,8 @@
 # Darksiders II: implementación y plan de calidad de animaciones
 
-> Escrito en ANANSI (`docs/darksiders-animation-quality-plan.md`) y trasladado
-> aquí el 2026-10-10. Las cifras y rutas de `temp/` y `dist/` son las de
-> aquella máquina y aquel repositorio; los scripts y tests tienen ya los
-> nombres de este. La validación se repitió el 2026-10-10 con el zip 2.0.0
+> Escrito durante la 1.x y traído aquí el 2026-10-10. Las cifras y rutas de
+> `temp/` y `dist/` son las de entonces; los scripts y tests tienen ya los
+> nombres actuales. La validación se repitió el 2026-10-10 con el zip 2.0.0
 > (al final del documento).
 
 Inicio: 2026-09-16. Actualización: 2026-09-17. Estado: importador `.anm` 1.2.0
@@ -117,18 +116,14 @@ escenas y renders válidos del ZIP (`temp/qa-anm-zip-01/`) y la regresión `.2`
 queda el resumen consolidado de arriba. Estos archivos con assets son locales
 y no se incluyen en git ni en la extensión.
 
-ZIP validado por `blender --command extension validate`:
-`dist/io_anansi_darksiders-1.2.0.zip` (86.281 bytes), SHA256
+ZIP validado por `blender --command extension validate`: el de la 1.2.0
+(86.281 bytes), SHA256
 `8fd97fa37936e77792b9f1f9985672e20f03ba8d21723714dbcb97dd0705af51`.
 
 Pruebas específicas del lector: **112 aprobadas**. Ruff y `git diff --check`
 sin errores. Suite general final: **1.272 aprobadas, 30 omitidas, 458 subpruebas
 aprobadas y un fallo** (580 segundos; `temp/anm-pytest-final.xml`). El fallo
-es ajeno a Darksiders y está en
-`tests/test_slayer_materials.py::Juego::test_el_aliado_resuelve_su_difusa_de_cuerpo`:
-espera `body_2048_d.x2_syt`, pero la extracción local actual de Battleship
-resuelve `body_blue_d.png`. Se ejecutó el resolutor original de `HEAD` y devolvió
-exactamente el mismo PNG. No se modificaron esos módulos, la prueba ni los assets.
+era ajeno a Darksiders y no se tocó.
 
 ### Límites y estado de las acciones
 

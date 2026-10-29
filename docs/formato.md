@@ -1,16 +1,14 @@
 # Formatos de Darksiders: lo que se sabe y cómo se sabe
 
 Referencia técnica de los formatos que lee y escribe el addon (`io_darksiders/`).
-Nació como la sección «Vigil Engine» de la referencia de mallas de ANANSI
-(`agents/skills/mesh-reverse-engineering/reference.md`), donde se fue escribiendo
-entre el 2026-08-27 y el 2026-10-07, y se trasladó aquí el 2026-10-10 cuando
-Darksiders salió de ANANSI. Las fechas de cada apartado son las de su hallazgo.
+Se fue escribiendo durante la 1.x, entre el 2026-08-27 y el 2026-10-07, y llegó
+aquí el 2026-10-10 con la 2.0.0. Las fechas de cada apartado son las de su
+hallazgo.
 
 Fuentes externas en [`../CREDITS.md`](../CREDITS.md): finale00, zaramot,
 Szkaradek123 y el hilo 8962 de ZenHAX. Ninguna declara licencia, así que se
 estudiaron como especificación y **no** se derivó código de ellas. Los scripts
-de Blender 2.49 de Szkaradek123 estuvieron copiados en ANANSI como
-documentación; aquí no se incluyen.
+de Blender 2.49 de Szkaradek123 no se incluyen en el repositorio.
 
 Lo aprendido que no es una regla del formato —procesos, errores y mejoras
 pendientes— está en [`aprendizajes.md`](aprendizajes.md). El plan y la
@@ -187,7 +185,7 @@ real no se puede decidir cuál vale, así que no se escribió: habría sido adiv
 offsets, que es justo lo que la skill prohíbe.
 
 > **Nota (2026-10-10).** Los dos apartados siguientes describen el exportador
-> GLB que tuvo ANANSI (`services/darksiders/rig.py`). El addon no lo conserva:
+> GLB que hubo antes de la 2.0.0. El addon no lo conserva:
 > para sacar OBJ o GLB se usan los exportadores de Blender. Se dejan porque las
 > trampas que cuentan (IBM afín exacta, una primitiva por submalla) valen para
 > cualquier exportador de glTF que se escriba en el futuro.
@@ -337,10 +335,10 @@ conserva tamaño, índices, cabeceras desconocidas, materiales, paletas y bind p
 `roundtrip.py` guarda ruta, SHA-256, instancia, orientación e identidad de vértices
 en el `.blend`; conserva los pesos crudos cuando el usuario no los editó.
 Soporta posiciones/UV/pesos skinned con topología fija; recalcula normales y
-tangentes al cambiar geometría/UV. Rechaza cambios de topología (desde 1.3.0
-admite borrar; ver «Borrar geometría en el `.2`» más abajo), nueva costura
-por loop, más de cuatro influencias, pose/rest rig editada y sobreescritura del
-original. No escribe `.o3d`, `.bmat`, animaciones ni recompone `.obp`/`.upak`.
+tangentes al cambiar geometría/UV. Desde 1.3.0 admite borrar y desde 2.2.0
+cualquier topología en mallas con piel (ver «Borrar geometría en el `.2`» y
+«Malla nueva en el `.2`» más abajo). Rechaza más de cuatro influencias,
+pose/rest rig editada y sobreescritura del original. No escribe `.o3d`, `.bmat`, animaciones ni recompone `.obp`/`.upak`.
 
 QA real reproducible: `scripts/qa_blender.py`. En Blender 5.2.2 LTS:
 `base_glovesa` (1.377 verts/2.093 tris), `abyssala01_gloves` (3.826/5.096) y Belial
@@ -360,7 +358,8 @@ geometría/contenedores. El roundtrip binario no demuestra esa compatibilidad.
 
 Borrar es la única edición de topología que no obliga a inventar datos: cada
 superviviente tiene un registro original completo (atributos, vértice, pesos,
-huesos) que se copia íntegro. Añadir vértices sí lo obligaría, y sigue fuera.
+huesos) que se copia íntegro. Añadir vértices sí lo obliga; desde la 2.2.0 se
+hace con los valores medidos en el corpus (ver «Malla nueva en el `.2`»).
 
 **Cómo se reconoce el borrado.** `anansi_vertex_id` (atributo INT en POINT) lo
 conserva Blender al borrar, y los supervivientes quedan en su orden relativo.
@@ -407,7 +406,8 @@ con borrado + «solo caras» + mover un vértice en la misma exportación, Belia
 1.808→1.799; ambas copias se reimportan, y el render muestra un hueco limpio.
 
 **Fuera:** borrar en mallas estáticas, vaciar un material o una malla entera y
-cualquier adición. No probado en el juego, y el cargador `0.5.0-model-trial`
+cualquier adición (esta, desde la 2.2.0, como malla nueva). No probado en el
+juego, y el cargador `0.5.0-model-trial`
 rechaza por definición un archivo de distinto tamaño.
 
 > **Actualización (2026-10-10).** Darksiders2DLL `0.8.1-deletion-trial`, con
@@ -417,6 +417,74 @@ rechaza por definición un archivo de distinto tamaño.
 > siempre. Su README dice que se confirmó en el juego con `death_head.2`. Para
 > saber qué carga el juego, mirar siempre el README y los registros de
 > Darksiders2DLL, no este documento.
+
+## Malla nueva en el `.2` (2026-10-17, addon 2.2.0)
+
+Lo que no es un borrado (vértices o caras nuevas, fusionar, subdividir, una
+costura UV nueva, otro reparto de materiales o la malla de otro modelo unida con
+`Ctrl+J`) reescribe la malla entera desde Blender: `native.rebuild_dcm`, con
+`roundtrip.assemble_new_mesh` partiendo los vértices por (vértice, tramo, UV,
+normal). Solo mallas con piel. Nació de un caso real: vaciar
+`ds1a01_shoulder.2` y meterle la hombrera de otro modelo daba «vértices
+añadidos, duplicados o reordenados: solo se admite borrar».
+
+**Lo que Blender no da, medido en las 1.624 mallas con piel del corpus
+(2.283.234 vértices), sin una excepción:**
+
+| campo | valor |
+|---|---|
+| float de +16 del registro de vértice | 1,0 |
+| nº de influencias (+0) | el de pesos no nulos |
+| pesos no nulos | siempre los primeros (el orden entre ellos, libre) |
+| hueso de una ranura sin peso | 0 |
+
+**El segundo canal de atributos (+8..+16 del registro de 20 B)** no estaba
+documentado: son dos float32 que **no** son la UV. Valen cero en 1.275 mallas;
+en 349 traen valores de -670 a 392 (Belial, `necroa01_shoulder`…) cuyo
+significado no se sabe. Una malla se reconstruye solo si lo tiene a cero, y lo
+escribe a cero. El color por vértice se copia de la plantilla solo si es único
+(1.623 de 1.624).
+
+**Validación del escritor contra el juego:** reconstruir cada malla elegible con
+sus propios datos (posiciones, UV, normales, tangentes, pesos, huesos,
+triángulos y tramos leídos del archivo) da en **1.018 de 1.018** los cuatro
+registros de cada vértice (atributos, vértice, pesos y huesos) **idénticos byte
+a byte** a los del juego, cambiando solo el orden de los vértices. Quedaron fuera
+393 por el canal o el color, 193 por traer pesos sin normalizar de origen y 20
+que el validador rechaza por traer tangentes no ortogonales de origen.
+
+**Orden:** tramos en el orden de la plantilla, contiguos en índices y en
+vértices, y dentro de cada uno por primera aparición; un vértice que use dos
+materiales se parte. Así se cumplen las reglas de teselado del corpus de
+«Borrar geometría». El orden original de los vértices del juego **no** es el de
+primera aparición (en las 1.018), así que una reconstrucción nunca es byte
+idéntica en el bloque; por eso un borrado sigue yendo por `prune_dcm`, que copia
+los registros.
+
+**Lo que se conserva y por qué no se amplía:** la paleta de huesos, los
+materiales (nombres incluidos) y las bind poses. Ampliar la paleta cambiaría el
+tamaño de la cabecera, y Darksiders2DLL 0.9.0 (`override_unchecked`) solo encaja
+un reemplazo con la cabecera del tamaño original y con cada material dentro de
+sus vértices y triángulos originales. Por eso:
+
+- paleta de un solo hueso → la malla nueva va rígida a él (aviso);
+- un solo material → las caras con un material ajeno van a él (aviso: llevan su
+  textura, no la de su modelo);
+- con varios, un hueso o un material ajeno se rechazan con su nombre.
+
+**Caja:** la declarada, ampliada por unión con la geometría nueva en el espacio
+de su `BBFollowNode`, como al mover vértices.
+
+**QA en Blender 5.2.2** (`scripts/qa_blender.py`, también con el zip 2.2.0
+extraído): `ds1a01_shoulder.2` vaciada + `slayerb01_shoulder.2` unida → 428
+vértices (422 + 6 partidos por costura) y 696 triángulos, rígida a
+`Bone_Clavicle_L`, misma geometría que la donante al reimportarla y render
+frontal comparado a ojo. Fusionar, subdividir (tras triangular), una costura UV
+nueva y unos ids corruptos se reconstruyen en `base_glovesa`; Belial se rechaza
+por el canal. Las vueltas sin cambios siguen saliendo byte idénticas.
+
+**Pendiente:** probarlo en el juego. Que el `.2` se relea bien no demuestra que
+el motor lo acepte.
 
 ---
 

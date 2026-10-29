@@ -4,9 +4,15 @@ No reconstruye campos desconocidos ni contenedores OBP/UPAK. Mantiene paletas,
 materiales y el orden de la topología; modifica únicamente buffers verificados.
 Una vuelta sin ediciones devuelve exactamente los bytes originales.
 
-Borrar es la única edición de topología: `prune_dcm` copia íntegros los
-registros que sobreviven y recalcula solo lo que depende de cuántos quedan.
-Añadir vértices exigiría inventar registros que el original no tiene.
+Dos ediciones de topología:
+
+* **Borrar** (`prune_dcm`): copia íntegros los registros que sobreviven y
+  recalcula solo lo que depende de cuántos quedan.
+* **Malla nueva** (`rebuild_dcm`): reescribe todos los vértices y triángulos de
+  una malla con piel, conservando su paleta, sus materiales y el resto del
+  archivo. Los campos del registro que no salen de Blender llevan el valor que
+  tienen en **todo** el corpus (ver su docstring); el único que varía, un
+  segundo canal de atributos de significado desconocido, solo se admite a cero.
 """
 from __future__ import annotations
 
@@ -100,6 +106,23 @@ def prune_dcm(source: bytes, subsets: dict[int, MeshSubset]) -> bytes:
         raise DcmExportError("índice de malla que no existe en la plantilla")
     if not subsets:
         return source
+
+    def prune(mesh, end, header, index_at, vertex_at, pair_at):
+        return _prune_mesh(source, mesh, subsets[mesh.index], end, header, index_at, vertex_at, pair_at)
+
+    output, blocks, validated = _rewrite(source, meshes, {index: prune for index in subsets})
+    _verify_pruned(output, meshes, validated, blocks)
+    return output
+
+
+def _rewrite(source, meshes, builders):
+    """Cabecera + bloques, con ``builders[i]`` dando el bloque nuevo de la malla i.
+
+    Cada constructor recibe ``(malla, fin de su bloque, cabecera mutable,
+    offsets de sus entradas en las tablas de índices, vértices y parejas)`` y
+    devuelve ``(bloque, lo validado)``. Las demás mallas se copian tal cual; los
+    `head[2]` de todas se recalculan por si cambió el tamaño de alguna anterior.
+    """
     data_offset = struct.unpack_from("<I", source, 0)[0]
     index_table = 12
     vertex_table = index_table + 4 * struct.unpack_from("<i", source, 8)[0] + 4
@@ -112,11 +135,11 @@ def prune_dcm(source: bytes, subsets: dict[int, MeshSubset]) -> bytes:
     output = bytearray(source[:data_offset])
     blocks, validated = [], {}
     for index, mesh in enumerate(meshes):
-        if index not in subsets:
+        if index not in builders:
             blocks.append(source[bases[index]:ends[index]])
             continue
-        block, validated[index] = _prune_mesh(
-            source, mesh, subsets[index], ends[index], output,
+        block, validated[index] = builders[index](
+            mesh, ends[index], output,
             index_table + 4 * index, vertex_table + 4 * index, pair_table + 8 * index)
         blocks.append(block)
     cursor = data_offset
@@ -125,17 +148,15 @@ def prune_dcm(source: bytes, subsets: dict[int, MeshSubset]) -> bytes:
         struct.pack_into("<i", output, mesh.bbox_offset - 12, cursor - data_offset + 8)
         output += block
         cursor += len(block)
-
-    _verify_pruned(bytes(output), meshes, validated, blocks)
-    return bytes(output)
+    return bytes(output), blocks, validated
 
 
-def _prune_mesh(source, mesh, subset, end, header, index_at, vertex_at, pair_at):
-    """Bloque nuevo de una malla podada; escribe sus campos en ``header``."""
+def _check_skinned_template(source, mesh, end, index_at, vertex_at, pair_at, action):
+    """Exige a la malla de la plantilla el layout con piel medido en el corpus."""
     label = f"malla {mesh.index}"
     n, ic = mesh.vertex_count, mesh.indices.size
     if not mesh.is_skinned:
-        raise DcmExportError(f"{label}: borrar en mallas estáticas aún no está soportado; "
+        raise DcmExportError(f"{label}: {action} en mallas estáticas aún no está soportado; "
                              "su registro de vértice no está verificado")
     base = mesh.data_base
     if end - base != 8 + ic * 2 + n * SKINNED_TOTAL_STRIDE:
@@ -145,23 +166,13 @@ def _prune_mesh(source, mesh, subset, end, header, index_at, vertex_at, pair_at)
             or struct.unpack_from("<i", source, index_at)[0] != ic
             or struct.unpack_from("<if", source, pair_at) != (0, 0.0)):
         raise DcmExportError(f"{label}: recuentos de cabecera en una variante no verificada")
-    vertices = _increasing(subset.vertices, n, f"{label}: vértices")
-    triangles = _increasing(subset.triangles, ic // 3, f"{label}: triángulos")
-    if not triangles.size:
-        raise DcmExportError(f"{label}: se queda sin triángulos; borrar una malla entera no está "
-                             "soportado (para ocultarla, colapsa sus vértices)")
-    raw = np.frombuffer(source, dtype="<u2", count=ic, offset=base + 8).reshape(-1, 3)
-    remap = np.full(n, -1, dtype=np.int64)
-    remap[vertices] = np.arange(vertices.size)
-    kept = remap[raw[triangles]]
-    if np.any(kept < 0):
-        raise DcmExportError(f"{label}: un triángulo conservado usa un vértice borrado")
-    used = np.zeros(vertices.size, dtype=bool)
-    used[kept.ravel()] = True
-    if not used.all():
-        raise DcmExportError(f"{label}: quedarían vértices sin triángulo")
 
-    # Tramos: se exigen las reglas del corpus y se recalculan con ellas.
+
+def _check_spans(source, mesh):
+    """Los tramos de material con la forma del corpus; devuelve el búfer de índices crudo."""
+    label = f"malla {mesh.index}"
+    ic = mesh.indices.size
+    raw = np.frombuffer(source, dtype="<u2", count=ic, offset=mesh.data_base + 8).reshape(-1, 3)
     cursor = 0
     for submesh in mesh.submeshes:
         name = submesh.name or f"material_{submesh.material_index}"
@@ -172,17 +183,51 @@ def _prune_mesh(source, mesh, subset, end, header, index_at, vertex_at, pair_at)
                 or submesh.vertex_count != int(span.max()) - int(span.min()) + 1):
             raise DcmExportError(f"{label}: tramo «{name}» con una forma no verificada")
         cursor = start + count
+    if cursor != ic:
+        raise DcmExportError(f"{label}: los tramos no cubren el búfer de índices")
+    return raw
+
+
+def _write_span(header, source, submesh, vertex_count, vertex_start, index_count, index_start):
+    """Reescribe (vértices, primer vértice, índices, primer índice) de un tramo."""
+    fields = submesh.offset + 3 + struct.unpack_from("<H", source, submesh.offset + 1)[0]
+    struct.pack_into("<4i", header, fields + 8, vertex_count, vertex_start, index_count, index_start)
+
+
+def _prune_mesh(source, mesh, subset, end, header, index_at, vertex_at, pair_at):
+    """Bloque nuevo de una malla podada; escribe sus campos en ``header``."""
+    label = f"malla {mesh.index}"
+    n, ic = mesh.vertex_count, mesh.indices.size
+    _check_skinned_template(source, mesh, end, index_at, vertex_at, pair_at, "borrar")
+    base = mesh.data_base
+    vertices = _increasing(subset.vertices, n, f"{label}: vértices")
+    triangles = _increasing(subset.triangles, ic // 3, f"{label}: triángulos")
+    if not triangles.size:
+        raise DcmExportError(f"{label}: se queda sin triángulos; borrar una malla entera no está "
+                             "soportado (para ocultarla, colapsa sus vértices)")
+    # Tramos: se exigen las reglas del corpus y se recalculan con ellas.
+    raw = _check_spans(source, mesh)
+    remap = np.full(n, -1, dtype=np.int64)
+    remap[vertices] = np.arange(vertices.size)
+    kept = remap[raw[triangles]]
+    if np.any(kept < 0):
+        raise DcmExportError(f"{label}: un triángulo conservado usa un vértice borrado")
+    used = np.zeros(vertices.size, dtype=bool)
+    used[kept.ravel()] = True
+    if not used.all():
+        raise DcmExportError(f"{label}: quedarían vértices sin triángulo")
+
+    for submesh in mesh.submeshes:
+        name = submesh.name or f"material_{submesh.material_index}"
+        start, count = submesh.index_start, submesh.index_count
         inside = (triangles >= start // 3) & (triangles < (start + count) // 3)
         if not inside.any():
             raise DcmExportError(f"{label}: el material «{name}» se queda sin triángulos; "
                                  "vaciar un material no está soportado")
         local = kept[inside]
-        fields = submesh.offset + 3 + struct.unpack_from("<H", source, submesh.offset + 1)[0]
-        struct.pack_into("<4i", header, fields + 8, int(local.max()) - int(local.min()) + 1,
-                         int(local.min()), 3 * int(inside.sum()),
-                         3 * int(np.count_nonzero(triangles < start // 3)))
-    if cursor != ic:
-        raise DcmExportError(f"{label}: los tramos no cubren el búfer de índices")
+        _write_span(header, source, submesh, int(local.max()) - int(local.min()) + 1,
+                    int(local.min()), 3 * int(inside.sum()),
+                    3 * int(np.count_nonzero(triangles < start // 3)))
 
     count, new_ic = int(vertices.size), int(kept.size)
     struct.pack_into("<i", header, index_at, new_ic)
@@ -235,6 +280,222 @@ def _verify_pruned(output, meshes, subsets, blocks):
         health = after.health()
         if not health.ok:
             raise DcmExportError(f"malla {index}: tras borrar, {'; '.join(health.failures)}")
+
+
+@dataclass
+class NewMesh:
+    """Geometría completa para una malla con piel, sin registros de la plantilla.
+
+    En espacio nativo y convención del juego (V negada), con los triángulos en
+    el sentido de Blender: el escritor los invierte, como hace `parse_dcm` al
+    leer. ``spans[k]`` es el tramo de la plantilla al que va el triángulo k.
+    Cada vértice pertenece a un solo tramo: quien la construye parte los
+    compartidos, porque en el corpus los tramos teselan los vértices.
+    ``tangents`` es xyz + signo de bitangente.
+    """
+
+    positions: np.ndarray
+    uvs: np.ndarray
+    normals: np.ndarray
+    tangents: np.ndarray
+    joints: np.ndarray
+    weights: np.ndarray
+    triangles: np.ndarray
+    spans: np.ndarray
+
+
+# u16 en el búfer de índices.
+MAX_VERTICES = 0xFFFF
+# Registros con piel (`mesh.py`): atributos de 20 B y vértice de 52 B.
+_ATTRIBUTE_RECORD = np.dtype([("uv", "<f4", 2), ("channel", "<f4", 2), ("colour", "u1", 4)])
+_VERTEX_RECORD = np.dtype([("influences", "<u4"), ("position", "<f4", 3), ("w", "<f4"),
+                           ("normal", "<f4", 3), ("normal_z", "<f4"), ("tangent", "<f4", 4)])
+
+
+def rebuild_dcm(source: bytes, meshes: dict[int, NewMesh], *, boxes=None) -> bytes:
+    """Devuelve otro .2 con la geometría de ``meshes`` en lugar de la de esas mallas.
+
+    De la plantilla se conservan la paleta de huesos (los índices de ``joints``
+    son suyos), los materiales y sus nombres, el resto de mallas y todos los
+    bytes que no dependen de la geometría. Se recalculan los recuentos, los
+    tramos, el `head[2]` de las mallas posteriores y la caja, que se amplía por
+    unión en el espacio de ``boxes`` igual que al mover vértices.
+
+    Lo que el registro lleva y Blender no da sale de lo medido en las 1.624
+    mallas con piel del corpus (2.283.234 vértices), sin excepciones: el float
+    de +16 del vértice vale 1,0; el nº de influencias es el de pesos no nulos,
+    que van primero; las ranuras vacías llevan hueso 0 y peso 0. El color se
+    copia de la plantilla, y solo si es el mismo en todos sus vértices. Queda
+    el segundo canal de atributos (+8..+16): a cero en 1.275 mallas y con
+    valores de significado desconocido en 349; solo se reconstruyen las que lo
+    tienen a cero, y lo escriben a cero.
+    """
+    parsed = parse_dcm(source)
+    if any(not isinstance(i, int) or not 0 <= i < len(parsed.meshes) for i in meshes):
+        raise DcmExportError("índice de malla que no existe en la plantilla")
+    if not meshes:
+        return source
+    expected = {}
+
+    def rebuild(mesh, end, header, index_at, vertex_at, pair_at):
+        block, expected[mesh.index] = _rebuild_mesh(source, mesh, meshes[mesh.index], end, header,
+                                                   index_at, vertex_at, pair_at, (boxes or {}).get(mesh.index))
+        return block, expected[mesh.index]
+
+    output, blocks, _ = _rewrite(source, parsed.meshes, {index: rebuild for index in meshes})
+    _verify_rebuilt(output, parsed.meshes, expected, blocks)
+    return output
+
+
+def _rebuild_mesh(source, mesh, new, end, header, index_at, vertex_at, pair_at, box_matrix):
+    label = f"malla {mesh.index}"
+    _check_skinned_template(source, mesh, end, index_at, vertex_at, pair_at, "reconstruir")
+    _check_spans(source, mesh)
+    n0 = mesh.vertex_count
+    at = mesh.data_base + 8 + mesh.indices.size * 2
+    attrs = np.frombuffer(source, dtype=np.uint8, count=n0 * 20, offset=at).reshape(n0, 20)
+    if attrs[:, 8:16].any():
+        raise DcmExportError(f"{label}: usa el segundo canal de atributos, cuyo significado no se "
+                             "conoce; no se pueden inventar sus valores para vértices nuevos")
+    colours = np.unique(mesh.colours, axis=0)
+    if len(colours) != 1:
+        raise DcmExportError(f"{label}: tiene color por vértice; no se puede repartir en vértices nuevos")
+
+    triangles = np.asarray(new.triangles, dtype=np.int64)
+    spans = np.asarray(new.spans, dtype=np.int64).reshape(-1)
+    n = len(np.asarray(new.positions))
+    if triangles.ndim != 2 or triangles.shape[1] != 3 or len(spans) != len(triangles) or not len(triangles):
+        raise DcmExportError(f"{label}: triángulos o tramos con dimensiones incorrectas")
+    if not 3 <= n <= MAX_VERTICES:
+        raise DcmExportError(f"{label}: {n} vértices; el formato admite entre 3 y {MAX_VERTICES}")
+    if triangles.min() < 0 or triangles.max() >= n:
+        raise DcmExportError(f"{label}: un triángulo usa un vértice que no existe")
+    if spans.min() < 0 or spans.max() >= len(mesh.submeshes):
+        raise DcmExportError(f"{label}: tramo que no existe en la plantilla")
+    positions = _array(new.positions, (n, 3), "posiciones")
+    uvs = _array(new.uvs, (n, 2), "UV")
+    normals = _array(new.normals, (n, 3), "normales")
+    tangents = _array(new.tangents, (n, 4), "tangentes")
+    weights = _array(new.weights, (n, 4), "pesos")
+    joints = _array(new.joints, (n, 4), "huesos")
+    if not np.allclose(np.linalg.norm(normals, axis=1), 1, atol=1e-3):
+        raise DcmExportError(f"{label}: normales no unitarias")
+    if (not np.allclose(np.linalg.norm(tangents[:, :3], axis=1), 1, atol=1e-3)
+            or not np.all(np.isin(tangents[:, 3], (-1.0, 1.0)))
+            or np.max(abs(np.sum(normals * tangents[:, :3], axis=1))) > 1e-3):
+        raise DcmExportError(f"{label}: base de tangentes inválida")
+    live = weights > 0
+    if (np.any(weights < 0) or not np.allclose(weights.sum(1), 1, atol=1e-5)
+            or np.any(np.diff(live.astype(np.int8), axis=1) > 0)
+            or np.any(joints != np.floor(joints)) or np.any(joints < 0)
+            or np.any(joints >= min(len(mesh.bones), 256)) or np.any(joints[~live] != 0)):
+        raise DcmExportError(f"{label}: pesos sin normalizar, fuera de orden o huesos fuera de la paleta")
+
+    # Cada vértice, en un solo tramo; todos los vértices, en algún triángulo.
+    owner = np.full(n, -1, dtype=np.int64)
+    for corner in range(3):
+        clash = (owner[triangles[:, corner]] >= 0) & (owner[triangles[:, corner]] != spans)
+        if clash.any():
+            raise DcmExportError(f"{label}: un vértice está en dos materiales; hay que partirlo")
+        owner[triangles[:, corner]] = spans
+    if np.any(owner < 0):
+        raise DcmExportError(f"{label}: hay vértices sin triángulo")
+
+    # Orden del corpus: los tramos en el orden de la plantilla, contiguos en
+    # índices y en vértices; dentro de cada uno, por primera aparición.
+    order, tri_order = [], []
+    for k, submesh in enumerate(mesh.submeshes):
+        name = submesh.name or f"material_{submesh.material_index}"
+        mine = np.flatnonzero(spans == k)
+        if not mine.size:
+            raise DcmExportError(f"{label}: el material «{name}» se queda sin triángulos; "
+                                 "vaciar un material no está soportado")
+        seen = triangles[mine].ravel()
+        _, first = np.unique(seen, return_index=True)
+        vertices = seen[np.sort(first)]
+        index_start = 3 * len(tri_order)
+        _write_span(header, source, submesh, vertices.size, len(order), 3 * mine.size, index_start)
+        order.extend(vertices.tolist())
+        tri_order.extend(mine.tolist())
+    order = np.asarray(order, dtype=np.int64)
+    remap = np.empty(n, dtype=np.int64)
+    remap[order] = np.arange(n)
+    faces = remap[triangles[tri_order]]
+
+    struct.pack_into("<i", header, index_at, faces.size)
+    struct.pack_into("<i", header, vertex_at, n)
+    struct.pack_into("<i", header, mesh.bbox_offset - 20, n)
+    header[mesh.bbox_offset:mesh.bbox_offset + 24] = _box(mesh, positions[order], box_matrix).tobytes()
+
+    positions, uvs, normals = positions[order], uvs[order], normals[order]
+    tangents, weights, joints = tangents[order], weights[order], joints[order]
+    attr = np.zeros(n, dtype=_ATTRIBUTE_RECORD)
+    attr["uv"] = uvs
+    attr["colour"] = colours[0]
+    vertex = np.zeros(n, dtype=_VERTEX_RECORD)
+    vertex["influences"] = np.count_nonzero(weights > 0, axis=1)
+    vertex["position"] = positions
+    vertex["w"] = 1.0
+    vertex["normal"] = normals
+    vertex["normal_z"] = normals[:, 2]  # el corpus duplica normal.z en +32
+    vertex["tangent"] = tangents
+    stored = faces[:, ::-1]  # el motor dibuja con el winding invertido
+    block = (struct.pack("<2I", stored.size * 2, 2) + stored.astype("<u2").tobytes() + attr.tobytes()
+             + vertex.tobytes() + weights.astype("<f4").tobytes() + joints.astype(np.uint8).tobytes())
+    expected = {"positions": positions, "uvs": uvs, "normals": normals, "weights": weights,
+                "joints": joints.astype(np.uint8), "faces": faces, "colour": colours[0],
+                "spans": spans[tri_order]}
+    return block, expected
+
+
+def _box(mesh, positions, matrix):
+    """La caja declarada ampliada por la geometría nueva, en el espacio de la caja."""
+    if matrix is None:
+        if mesh.warnings:
+            raise DcmExportError(f"malla {mesh.index}: falta resolver BBFollowNode del .o3d para "
+                                 "actualizar la AABB")
+        matrix = np.eye(4)
+    matrix = np.asarray(matrix, dtype=np.float64)
+    if (matrix.shape != (4, 4) or not np.isfinite(matrix).all()
+            or not np.allclose(matrix[:, 3], [0, 0, 0, 1])):
+        raise DcmExportError("matriz de la AABB inválida")
+    points = (np.c_[positions, np.ones(len(positions))] @ matrix)[:, :3]
+    return np.r_[np.minimum(mesh.bbox[:3], points.min(0)),
+                 np.maximum(mesh.bbox[3:], points.max(0))].astype("<f4")
+
+
+def _verify_rebuilt(output, meshes, expected, blocks):
+    """Relee la copia y comprueba campo a campo lo reconstruido y lo intacto."""
+    try:
+        result = parse_dcm(output)
+    except (DcmParseError, ValueError) as exc:
+        raise DcmExportError(f"el .2 reconstruido no supera la relectura: {exc}") from exc
+    for index, (before, after) in enumerate(zip(meshes, result.meshes)):
+        want = expected.get(index)
+        if want is None:
+            same = output[after.data_base:after.data_base + len(blocks[index])] == blocks[index]
+            if not same or after.submeshes != before.submeshes or after.bbox != before.bbox:
+                raise DcmExportError(f"malla {index}: cambió sin haberla editado")
+            continue
+        n = len(want["positions"])
+        checks = [after.vertex_count == n, np.array_equal(after.indices, want["faces"]),
+                  after.bones == before.bones, len(after.submeshes) == len(before.submeshes),
+                  np.array_equal(after.influences, np.count_nonzero(want["weights"] > 0, axis=1)),
+                  np.all(after.colours == want["colour"])]
+        for name in ("positions", "uvs", "normals", "weights", "joints"):
+            checks.append(np.array_equal(getattr(after, name), np.asarray(want[name], dtype=getattr(after, name).dtype)))
+        for k, (old, new) in enumerate(zip(before.submeshes, after.submeshes)):
+            where = np.flatnonzero(want["spans"] == k)
+            span = want["faces"][where]
+            checks.append((new.name, new.material_index, new.index_start, new.index_count,
+                           new.vertex_start, new.vertex_count)
+                          == (old.name, old.material_index, 3 * int(where[0]), 3 * where.size,
+                              int(span.min()), int(span.max()) - int(span.min()) + 1))
+        if not all(checks):
+            raise DcmExportError(f"malla {index}: la copia reconstruida no coincide con la malla pedida")
+        health = after.health()
+        if not health.ok:
+            raise DcmExportError(f"malla {index}: la malla nueva no es sana: {'; '.join(health.failures)}")
 
 
 def _array(value, shape, label):

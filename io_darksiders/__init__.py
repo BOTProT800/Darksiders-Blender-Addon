@@ -16,7 +16,7 @@ import sys
 bl_info = {
     "name": "Darksiders",
     "author": "BOTProT800",
-    "version": (2, 1, 0),
+    "version": (2, 2, 0),
     "blender": (4, 2, 0),
     "location": "File > Import / Export > Darksiders",
     "description": "Importa modelos, esqueletos y animaciones de Darksiders; exporta ediciones .2",

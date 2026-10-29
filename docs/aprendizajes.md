@@ -1,7 +1,7 @@
 # Aprendizajes y mejoras pendientes
 
-Lo que dejó el trabajo sobre Darksiders entre el 2026-08-27 y el 2026-10-10,
-cuando vivía en ANANSI, y lo que queda por hacer. Las reglas del formato, con
+Lo que dejó el trabajo sobre Darksiders desde el 2026-08-27 y lo que queda por
+hacer. Las reglas del formato, con
 sus cifras, están en [`formato.md`](formato.md); aquí está lo que **no** es una
 regla del formato: qué costó encontrar, qué errores se cometieron y qué
 conviene hacer a continuación.
@@ -135,8 +135,24 @@ original y aplicar solo el **cambio** que produce la edición según el método 
 juego (2026-10-14).
 
 **Rechazar con un mensaje que nombre el objeto** es mejor que exportar algo que
-no se sabe representar: fusionar, subdividir, una costura UV nueva, materiales
-reasignados, una pose que no es la de descanso.
+no se sabe representar: una pose que no es la de descanso, un segundo canal de
+atributos que no se sabe rellenar. Fusionar, subdividir, una costura UV nueva o
+materiales reasignados se rechazaban por lo mismo hasta la 2.2.0; ahora se
+representan reescribiendo la malla.
+
+**Para inventar un campo, que lo diga el corpus entero.** Escribir vértices
+nuevos obliga a rellenar lo que Blender no da. Antes de escribir una línea se
+midieron las 1.624 mallas con piel: `w = 1,0`, influencias = pesos no nulos,
+ranuras vacías a 0, sin una excepción en 2,28 millones de vértices. El hueco de
++8..+16 que nadie había documentado resultó **no** ser constante (349 mallas lo
+usan), y eso decidió el límite: se reconstruye solo donde vale cero. La prueba
+del escritor fue reconstruir cada malla elegible con sus propios datos y
+comparar registros: 1.018 de 1.018 idénticos byte a byte (2026-10-17).
+
+**Sin el contrato del cargador no hay diseño.** La paleta y los materiales se
+conservan porque Darksiders2DLL 0.9.0 solo encaja un reemplazo con la cabecera
+del tamaño original. Ampliar la paleta habría sido correcto para el formato e
+inútil para el juego. Leer antes su `research/MODEL_TRIAL.md`.
 
 **El doble de `bpy` prueba el cableado, no Blender.** Los tests con
 `tests/_fake_bpy.py` cazan erratas y orden de llamadas; lo que hace Blender de
@@ -154,18 +170,18 @@ evaluaciones.
 y en una sesión con interfaz los avisos se pierden al siguiente clic.
 
 **Preferencias que nadie entiende son un defecto.** Hasta la 1.3.0 el addon
-tenía una «Carpeta de ANANSI» y buscaba los parsers por variables de entorno y
-carpetas padre. El usuario lo encontró sin saber para qué servía. De ahí las dos
+pedía una carpeta en las preferencias y buscaba los parsers por variables de
+entorno y carpetas padre. El usuario lo encontró sin saber para qué servía. De ahí las dos
 reglas que no se negocian: autosuficiente y con botón de desinstalar (en
 [`../AGENTS.md`](../AGENTS.md)). La desinstalación se aplaza con un temporizador
 (hacerla dentro del operador desregistra su propia clase) y no se ofrece desde
 el código fuente enlazado: borraría el repositorio siguiendo el enlace.
 
 **Copiar parsers desde otro repositorio cuesta más que tenerlos dentro.** En
-ANANSI el empaquetador copiaba los parsers a `_vendor/` con una lista a mano, y
-el addon registraba un paquete `services` falso para no ejecutar el
-`__init__.py` de ANANSI, que arrastraba dependencias que Blender no trae. Al
-independizarse, los parsers viven en `io_darksiders/formats/`, el paquete no
+la 1.x el empaquetador copiaba los parsers a `_vendor/` con una lista a mano, y
+el addon registraba un paquete `services` falso para no ejecutar un
+`__init__.py` que arrastraba dependencias que Blender no trae. Desde la 2.0.0,
+los parsers viven en `io_darksiders/formats/`, el paquete no
 importa `bpy` a nivel de módulo (para poder probarlo sin Blender) y el
 empaquetador solo comprueba que nada importe algo ajeno.
 
@@ -227,5 +243,6 @@ Por orden de lo que más ayudaría a quien usa el addon:
 (`.bmat`) y datos de motor. El addon solo trata modelos, esqueletos y
 animaciones; del OBP saca únicamente `.2`, `.o3d` y `.anm`. Los conversores a
 OBJ y GLB fuera de Blender también se dejaron: los exportadores de Blender
-cubren eso. Añadir vértices o costuras nuevas exigiría inventar registros que
-el original no tiene, y sigue fuera.
+cubren eso. Añadir vértices o costuras nuevas se admite desde la 2.2.0 en mallas
+con piel, reescribiendo la malla con los valores medidos en el corpus (ver
+`formato.md`, «Malla nueva en el `.2`»).

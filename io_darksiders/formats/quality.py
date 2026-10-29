@@ -1,9 +1,8 @@
 """Puertas de calidad de una malla ya decodificada.
 
-Es la parte de `services/common/mesh_quality.py` de ANANSI que usan los
-parsers de Darksiders, copiada el 2026-10-10 cuando el addon se independizó de
-ANANSI (el mismo autor y la misma licencia MIT). Solo se quitaron las funciones
-que aquí nadie llama: detección de tiras, decodificación de index buffers y el
+Es la parte del módulo común de calidad de malla de la 1.x que usan los
+parsers de Darksiders, copiada el 2026-10-10 (el mismo autor y la misma
+licencia MIT). Solo se quitaron las funciones que aquí nadie llama: detección de tiras, decodificación de index buffers y el
 detector de anomalías de UV por material.
 
 Contrato de `calculate_mesh_health`: los problemas de **geometría** (vértices
@@ -46,7 +45,7 @@ MIN_FACES_FOR_SPIKE_GATE = 64
 #   AABB. Un IB corrido o un stride equivocado dejan la topología por índice,
 #   pero sus caras cruzan la caja y el área se dispara.
 #
-# Umbrales medidos en ANANSI sobre 1515 mallas reales de otro motor; con pocas
+# Umbrales medidos sobre 1515 mallas reales de otro motor; con pocas
 # caras el área de la basura también es pequeña, así que el tope escala con las
 # caras hasta `SPIKE_AREA_MAX`.
 SPIKE_SHARED_MIN = 0.85

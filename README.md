@@ -32,14 +32,13 @@ nada fuera de su carpeta. No hay nada que configurar. Para quitarlo, despliega
 «Darksiders» en `Edit > Preferences > Add-ons` y pulsa **Desinstalar addon**;
 tus `.blend` no cambian.
 
-### Si venías de la versión de ANANSI (1.x)
+### Si venías de la 1.x
 
-Hasta la 1.4.0 el addon vivía en ANANSI y se llamaba **Darksiders (ANANSI)**
-(`io_anansi_darksiders`). La 2.0.0 cambia de identificador, así que para
-Blender es otro addon:
+Hasta la 1.4.0 el addon tenía otro identificador (`io_anansi_darksiders`). La
+2.0.0 lo cambia, así que para Blender es otro addon:
 
-1. En `Edit > Preferences > Add-ons`, despliega «Darksiders (ANANSI)» y pulsa
-   **Desinstalar addon**.
+1. En `Edit > Preferences > Add-ons`, despliega el «Darksiders» de versión 1.x
+   y pulsa **Desinstalar addon**.
 2. Instala el zip de esta versión (`io_darksiders-<versión>.zip`) y reinicia
    Blender.
 
@@ -91,9 +90,13 @@ ni efectos. Todavía **no se exporta `.anm`**.
 ## Exportar una copia del modelo
 
 1. Edita posiciones, UV existentes o pesos, y borra la geometría que sobre con
-   `X` (**Vertices**, **Edges**, **Faces** u **Only Faces**). No añadas vértices
-   ni triángulos y conserva los grupos de huesos. Máximo cuatro influencias por
-   vértice; se normalizan al exportar.
+   `X` (**Vertices**, **Edges**, **Faces** u **Only Faces**). Máximo cuatro
+   influencias por vértice; se normalizan al exportar.
+
+   En las mallas con piel también puedes **cambiar la geometría**: añadir,
+   fusionar, subdividir, abrir costuras UV o sustituir la malla por la de otro
+   modelo (borra la suya y une la otra con `Ctrl+J`, dejando activa la de este
+   modelo). Esa malla se reescribe entera; ver «Malla nueva» abajo.
 2. Con cualquier malla del modelo activa,
    `File > Export > Darksiders copia del modelo (.2)`. Se guardan **todas** las
    mallas de esa importación. Elige una ruta distinta del original; el selector
@@ -114,11 +117,28 @@ y solo lo usa si la caja original lo confirma. Si no lo encuentra, rechaza la
 exportación con «falta resolver BBFollowNode».
 
 Se rechaza, con un mensaje que nombra el objeto, todo lo que no es una edición
-soportada: fusionar, disolver, subdividir, extruir, costuras UV nuevas, cambios
-de material, editar el esqueleto, exportar con una pose animada o con
-modificadores activos distintos de Armature. Tampoco se admite todavía vaciar un
-material o una malla entera, ni editar mallas estáticas (solo vuelven sin
-cambios).
+soportada: editar el esqueleto, exportar con una pose animada o con
+modificadores activos distintos de Armature, vaciar un material o una malla
+entera y editar mallas estáticas (solo vuelven sin cambios).
+
+### Malla nueva
+
+Si una malla con piel ya no es la original con trozos borrados, se reescribe con
+lo que hay en Blender. Del original se conservan su **paleta de huesos**, sus
+**materiales**, sus bind poses y las demás mallas; el aviso de la exportación
+dice cuántos vértices y triángulos tiene la nueva frente a la original.
+
+- **Huesos:** solo los de la paleta de esa malla. Si la paleta tiene un único
+  hueso (pasa en `ds1a01_shoulder.2`, solo `Bone_Clavicle_L`), la malla entera va
+  rígida a él y se avisa de los grupos que no caben. Con varios, un peso en un
+  hueso ajeno se rechaza y hay que pasarlo a uno de la paleta.
+- **Materiales:** las caras con un material que no es de la plantilla van a su
+  único material, si solo tiene uno (se avisa: la textura será la de ese
+  material); con varios, hay que asignárselos.
+- **Triángulos:** triangula antes (`Ctrl+T`).
+- No se reconstruyen las mallas que usan un segundo canal de atributos de
+  significado desconocido (349 de 1.624 en el corpus, Belial entre ellas) ni las
+  que tienen color por vértice: no hay de dónde sacar esos valores.
 
 ### Cargarlo en el juego
 
@@ -127,6 +147,10 @@ El addon no toca los archivos del juego. Para cargar la copia se usa
 aparte. **Qué acepta el juego lo dice su README y sus registros, no este
 documento**: a 2026-10-10 su `0.8.1-deletion-trial`, con
 `models=override_shape`, acepta copias con geometría borrada en mallas con piel.
+Una malla nueva necesita `models=override_unchecked` (código 0.9.0, pendiente de
+probar en el juego a 2026-10-17), que la encaja en las lecturas del original:
+solo la carga si cada material tiene **como mucho los vértices y triángulos del
+original**. El exportador avisa cuando la malla nueva no cabe.
 
 ## Desarrollo
 
@@ -163,9 +187,7 @@ de salida nuevo y nunca tocan los originales.
 
 ## Origen y licencia
 
-El addon nació dentro de [ANANSI](https://github.com/BOTProT800/ANANSI) y se
-independizó en la 2.0.0 (2026-10-10). Es código original con licencia MIT
-([`LICENSE`](LICENSE)). **No** es una actualización de los scripts de Blender
+Es código original con licencia MIT ([`LICENSE`](LICENSE)). **No** es una actualización de los scripts de Blender
 2.49 de Szkaradek123: esos no declaran licencia y no se derivan; se estudiaron
 como documentación del formato, igual que las demás fuentes de
 [`CREDITS.md`](CREDITS.md). El repositorio no contiene ni distribuye archivos

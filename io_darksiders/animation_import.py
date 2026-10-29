@@ -8,8 +8,8 @@ import bpy
 import numpy as np
 from mathutils import Matrix
 
-# Igual que `roundtrip.PREFIX`: el nombre viene de cuando el addon vivía en
-# ANANSI y se conserva para que los rigs de las versiones 1.x sigan valiendo.
+# Igual que `roundtrip.PREFIX`: el nombre es el de las versiones 1.x y se
+# conserva para que sus rigs sigan valiendo.
 METADATA = "anansi_animation_rig"
 MAX_KEYS = 3_000_000
 
