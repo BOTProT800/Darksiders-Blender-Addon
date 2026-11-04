@@ -69,6 +69,8 @@ class MeshPlan:
     materials: list[str] = field(default_factory=list)
     # Índice dentro de `materials` para cada cara.
     face_materials: list[int] = field(default_factory=list)
+    # Índice dentro de `materials` para cada tramo del `.2`, en su orden.
+    span_slots: list[int] = field(default_factory=list)
     # nombre de hueso -> [(índice de vértice, peso)]
     weights: dict[str, list[tuple[int, float]]] = field(default_factory=dict)
     normals: list[Vector3] = field(default_factory=list)
@@ -152,8 +154,30 @@ def build_armature_plan(skeleton, *, face_forward: bool = False) -> ArmaturePlan
     return plan
 
 
-def build_mesh_plan(mesh, index: int, base_name: str, skeleton=None, *, face_forward=False) -> MeshPlan:
-    """Convierte una `DcmMesh` a plan de malla, con pesos ya por nombre de hueso."""
+def span_labels(submeshes, *, split: bool = True) -> list[str]:
+    """El nombre de la ranura de material de cada tramo.
+
+    Un tramo se llama como su material. Hay mallas con varios tramos del mismo
+    nombre y distinto índice de material (254 de las 1.624 con piel del corpus,
+    130 de ellas armas: `axed02.2` lleva «AxeD02» con los índices 0 y 2). Con
+    ``split`` cada uno recibe su ranura, «AxeD02 #0» y «AxeD02 #2»; si no, se
+    juntan en una, como hacían las importaciones anteriores a la 2.3.0, y
+    entonces una cara nueva no tiene a qué tramo ir.
+    """
+    bases = [submesh.name or f"material_{submesh.material_index}" for submesh in submeshes]
+    if not split:
+        return bases
+    return [f"{base} #{submesh.material_index}" if bases.count(base) > 1 else base
+            for base, submesh in zip(bases, submeshes)]
+
+
+def build_mesh_plan(mesh, index: int, base_name: str, skeleton=None, *, face_forward=False,
+                    split_spans=True) -> MeshPlan:
+    """Convierte una `DcmMesh` a plan de malla, con pesos ya por nombre de hueso.
+
+    ``split_spans=False`` reproduce las ranuras de una importación anterior a la
+    2.3.0 (ver `span_labels`); el exportador lo necesita para leer esas escenas.
+    """
     plan = MeshPlan(name=f"{base_name}_{index:02d}", source_index=index)
     plan.vertices = [
         orient_vector(p, face_forward) for p in mesh.positions.tolist()
@@ -166,11 +190,11 @@ def build_mesh_plan(mesh, index: int, base_name: str, skeleton=None, *, face_for
 
     slots: dict[str, int] = {}
     face_materials = [0] * len(plan.faces)
-    for submesh in mesh.submeshes:
-        label = submesh.name or f"material_{submesh.material_index}"
+    for submesh, label in zip(mesh.submeshes, span_labels(mesh.submeshes, split=split_spans)):
         if label not in slots:
             slots[label] = len(slots)
             plan.materials.append(label)
+        plan.span_slots.append(slots[label])
         start = submesh.index_start // 3
         for face in range(start, min(start + submesh.index_count // 3, len(face_materials))):
             face_materials[face] = slots[label]

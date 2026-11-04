@@ -62,7 +62,10 @@ armadura y la malla queda vinculada a ella. Para piezas sin esqueleto propio
   armadura sale con varias raíces. Es fiel al archivo.
 * **Conectar huesos** está desactivado por defecto: queda más limpio, pero
   desplaza la cabeza de los huesos cuyo padre no termina donde empiezan ellos.
-* Los materiales se crean con el nombre de la submalla y **sin textura**.
+* Los materiales se crean con el nombre de la submalla y **sin textura**, uno
+  por submalla. Si dos submallas comparten nombre (pasa en muchas armas:
+  `axed02.2` trae dos «AxeD02»), llevan detrás su índice de material:
+  «AxeD02 #0» y «AxeD02 #2».
 * Las UV se conservan siempre, aunque salgan de `[0,1]`: el juego repite
   texturas a propósito.
 * Los avisos van a la barra de estado y **además** a la consola con el prefijo
@@ -134,7 +137,12 @@ dice cuántos vértices y triángulos tiene la nueva frente a la original.
   hueso ajeno se rechaza y hay que pasarlo a uno de la paleta.
 - **Materiales:** las caras con un material que no es de la plantilla van a su
   único material, si solo tiene uno (se avisa: la textura será la de ese
-  material); con varios, hay que asignárselos.
+  material); con varios, hay que asignárselos en `Material Properties`
+  (selecciona las caras en modo edición y pulsa **Assign**). Cada material de la
+  plantilla necesita **al menos una cara**: el `.2` no admite uno vacío. Al unir
+  con `Ctrl+J` una malla sin materiales, todas sus caras caen en el primero.
+  Un modelo importado con una versión anterior a la 2.3.0 junta en un material
+  las submallas del mismo nombre; si la exportación lo dice, vuelve a importarlo.
 - **Triángulos:** triangula antes (`Ctrl+T`).
 - No se reconstruyen las mallas que usan un segundo canal de atributos de
   significado desconocido (349 de 1.624 en el corpus, Belial entre ellas) ni las

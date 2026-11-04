@@ -472,6 +472,30 @@ sus vértices y triángulos originales. Por eso:
   textura, no la de su modelo);
 - con varios, un hueso o un material ajeno se rechazan con su nombre.
 
+**Tramos con el mismo nombre (2026-11-03, addon 2.3.0).** El nombre no
+identifica el tramo: 254 de las 1.624 mallas con piel del corpus (130 en
+`items/weapons`, 82 en `items/armor`) repiten nombre con **distinto índice de
+material** (el primer `i32` de la entrada). `axed02.2` trae «AxeD02» con el 0
+(1.366 triángulos: cabeza, contera y empuñadura) y con el 2 (134: el asta). En el corpus no hay ni un par con el mismo nombre **y** el
+mismo índice. Hasta la 2.2.0 la importación los juntaba en una ranura de
+Blender, y al reconstruir una cara nueva no tenía a qué tramo ir («el material
+«AxeD02» tiene 2 tramos en la plantilla»): pasaba con cualquier arma vaciada y
+rellenada con `Ctrl+J`. Desde la 2.3.0 cada tramo tiene su ranura («AxeD02 #0»,
+«AxeD02 #2»), el objeto lo marca con `anansi_split_spans` y el exportador lee
+sin esa marca las escenas anteriores como antes (si hace falta separar, pide
+reimportar). Un tramo sin caras se rechaza nombrando su ranura. Qué distingue
+al índice 0 del 2 no se sabe: está en el `.bmat`, fuera de alcance.
+
+QA en Blender 5.2.3 con el zip 2.3.0 extraído (`scripts/qa_blender.py`):
+`axed02.2` vaciada + `axed01.2` unida sin sus `anansi_vertex_id` (si los trae y
+la topología coincide, la unión pasa por la plantilla sin reconstruir) → 1.176
+vértices, tramos «AxeD02» 0 y 2 con 1.366 y 134 triángulos, misma geometría que
+la donante tramo a tramo, y reimportada; render coloreado por ranura comparado
+a ojo con el original. Se rechazan las caras con material ajeno, el tramo vacío
+y la escena sin la marca. El tramo 0 queda con 1.080 vértices frente a 1.075
+(costuras de normales de Blender): Darksiders2DLL 0.9.0 no lo cargaría, y el
+exportador lo avisa.
+
 **Caja:** la declarada, ampliada por unión con la geometría nueva en el espacio
 de su `BBFollowNode`, como al mover vértices.
 

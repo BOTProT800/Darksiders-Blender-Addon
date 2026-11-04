@@ -41,6 +41,9 @@ def remember(obj, *, path, digest, instance, index, face_forward, group_names):
     obj[PREFIX + "mesh_index"] = index
     obj[PREFIX + "face_forward"] = face_forward
     obj[PREFIX + "groups"] = json.dumps(group_names)
+    # Una ranura de material por tramo (`plan.span_labels`). Sin esta marca la
+    # escena es de antes de la 2.3.0 y sus tramos del mismo nombre van juntos.
+    obj[PREFIX + "split_spans"] = True
     ids = obj.data.attributes.new(name=PREFIX + "vertex_id", type="INT", domain="POINT")
     ids.data.foreach_set("value", list(range(len(obj.data.vertices))))
 
@@ -230,7 +233,7 @@ def export_asset(context, target, modules, notices=None):
             raise native.DcmExportError("las mallas no comparten la misma plantilla")
         original = parsed.meshes[obj[PREFIX + "mesh_index"]]
         ids = _vertex_ids(obj, native)
-        subset, reason = _classify(obj, original, ids, native, modules["plan"])
+        subset, reason = _classify(obj, original, ids, native, _layout(obj, original, modules["plan"]))
         if reason is not None:
             if not original.is_skinned:
                 raise native.DcmExportError(f"{obj.name}: {reason}; las mallas estáticas solo admiten "
@@ -252,11 +255,12 @@ def export_asset(context, target, modules, notices=None):
     for index, (obj, reason) in rebuilt.items():
         _check_object(obj, native)
         original = parsed.meshes[index]
+        layout = _layout(obj, original, modules["plan"])
         try:
-            news[index] = _new_mesh(obj, original, native, notices)
+            news[index] = _new_mesh(obj, original, layout, native, notices)
         except native.DcmExportError as exc:
             raise native.DcmExportError(f"{obj.name}: {exc}") from exc
-        notices.extend(_size_notices(obj.name, reason, original, news[index]))
+        notices.extend(_size_notices(obj.name, reason, original, layout, news[index]))
     edits = {}
     for obj in objects:
         original = parsed.meshes[obj[PREFIX + "mesh_index"]]
@@ -266,7 +270,7 @@ def export_asset(context, target, modules, notices=None):
         slot = slots[original.index]
         rows = np.flatnonzero(slot >= 0)
         _check_object(obj, native)
-        expected = modules["plan"].build_mesh_plan(original, original.index, "original")
+        expected = _layout(obj, original, modules["plan"])
         if [p.material_index for p in mesh.polygons] != expected.face_materials:
             raise native.DcmExportError("asignación de materiales modificada; conserva los tramos originales")
         forward = bool(obj[PREFIX + "face_forward"])
@@ -313,7 +317,13 @@ def export_asset(context, target, modules, notices=None):
     return native.write_dcm_copy(Path(target), output, source=source_path)
 
 
-def _classify(obj, original, ids, native, plan):
+def _layout(obj, original, plan):
+    """El plan de la malla original con las ranuras de material con que se importó."""
+    return plan.build_mesh_plan(original, original.index, "original",
+                                split_spans=bool(obj.get(PREFIX + "split_spans", False)))
+
+
+def _classify(obj, original, ids, native, layout):
     """``(subconjunto, None)`` si la malla es la plantilla con borrados; ``(None, motivo)`` si no.
 
     El subconjunto es ``None`` cuando no falta nada. Además del borrado, el
@@ -325,8 +335,7 @@ def _classify(obj, original, ids, native, plan):
     except native.DcmExportError as exc:
         return None, str(exc).split(":")[0]
     kept = np.arange(original.triangle_count) if subset is None else subset.triangles
-    expected = np.asarray(plan.build_mesh_plan(original, original.index, "original").face_materials,
-                          dtype=np.int64)[kept]
+    expected = np.asarray(layout.face_materials, dtype=np.int64)[kept]
     if [p.material_index for p in obj.data.polygons] != expected.tolist():
         return None, "asignación de materiales modificada"
     layer = obj.data.uv_layers.active
@@ -362,7 +371,7 @@ def _check_object(obj, native):
                 raise native.DcmExportError("exporta en pose de descanso, sin transformar la armadura")
 
 
-def _new_mesh(obj, original, native, notices):
+def _new_mesh(obj, original, layout, native, notices):
     """La malla de la escena entera como `native.NewMesh`, en espacio nativo."""
     import bpy
 
@@ -373,7 +382,7 @@ def _new_mesh(obj, original, native, notices):
         raise native.DcmExportError("hay caras que no son triángulos: triangula la malla (Ctrl+T) antes de exportar")
     if mesh.uv_layers.active is None:
         raise native.DcmExportError("falta el mapa UV")
-    face_spans = _face_spans(obj, original, native, notices)
+    face_spans = _face_spans(obj, original, layout, native, notices)
     joints, weights = _vertex_weights(obj, original, native, notices)
     forward = bool(obj[PREFIX + "face_forward"])
     everywhere = np.asarray([orient_vector(obj.matrix_world @ v.co, forward) for v in mesh.vertices],
@@ -451,45 +460,51 @@ def assemble_new_mesh(native, positions, loop_vertex, face_spans, loop_uv, loop_
                           triangles=triangles, spans=face_spans)
 
 
-def _face_spans(obj, original, native, notices):
+def _face_spans(obj, original, layout, native, notices):
     """El tramo de la plantilla de cada cara, por el material de su ranura.
 
-    Las ranuras de la importación van primero y en el orden de los tramos; lo
+    Las ranuras de la importación van primero, una por tramo (``layout``); lo
     que Blender añade al unir otra malla va detrás. Se comparan por nombre sin
     el sufijo `.001` que pone Blender si el nombre ya existía. Si la plantilla
     tiene un solo tramo, las caras con un material ajeno van a él (se avisa):
-    no hay otro sitio donde pueda ir. Con varios, se pide asignarlas.
+    no hay otro sitio donde pueda ir. Con varios, se pide asignarlas. Ningún
+    tramo puede quedarse sin caras: en el corpus no hay ni uno vacío.
     """
-    spans = {}
-    for k, submesh in enumerate(original.submeshes):
-        spans.setdefault(submesh.name or f"material_{submesh.material_index}", []).append(k)
-    labels = list(spans)
+    labels = layout.materials
+    spans = [[k for k, slot in enumerate(layout.span_slots) if slot == index] for index in range(len(labels))]
     by_slot = {}
     for index, slot in enumerate(obj.material_slots):
         name = re.sub(r"\.\d{3}$", "", slot.material.name) if slot.material else None
-        if index < len(labels) and name == labels[index]:
-            by_slot[index] = labels[index]
+        if index < len(labels) and spans[index] and name == labels[index]:
+            by_slot[index] = index
     result, foreign = [], {}
     for polygon in obj.data.polygons:
-        label = by_slot.get(polygon.material_index)
-        if label is None:
+        index = by_slot.get(polygon.material_index)
+        if index is None:
             slot = obj.material_slots[polygon.material_index] if polygon.material_index < len(obj.material_slots) else None
             name = slot.material.name if slot and slot.material else "(sin material)"
             foreign[name] = foreign.get(name, 0) + 1
             result.append(-1)
             continue
-        if len(spans[label]) > 1:
-            raise native.DcmExportError(f"el material «{label}» tiene {len(spans[label])} tramos en la "
-                                        "plantilla; no se sabe a cuál va cada cara nueva")
-        result.append(spans[label][0])
+        if len(spans[index]) > 1:
+            raise native.DcmExportError(f"el material «{labels[index]}» junta {len(spans[index])} tramos de la "
+                                        "plantilla porque el modelo se importó con una versión anterior a la "
+                                        "2.3.0; vuelve a importarlo: cada tramo tendrá su propia ranura")
+        result.append(spans[index][0])
+    usable = [label for label, mine in zip(labels, spans) if mine]
     if foreign:
         listed = ", ".join(f"{name} ({count})" for name, count in sorted(foreign.items()))
         if len(original.submeshes) != 1:
             raise native.DcmExportError(f"caras con materiales que no son de la plantilla: {listed}; "
-                                        f"asígnales uno de: {', '.join(labels)}")
+                                        f"asígnales uno de: {', '.join(usable)}")
         notices.append(("WARNING", f"{obj.name}: las caras con {listed} usan el material de la plantilla, "
                                    f"«{labels[0]}», y su textura"))
         result = [0 if span < 0 else span for span in result]
+    used = set(result)
+    empty = [labels[layout.span_slots[k]] for k in range(len(original.submeshes)) if k not in used]
+    if empty:
+        raise native.DcmExportError(f"sin caras en {', '.join(f'«{label}»' for label in empty)}: el .2 no "
+                                    "admite un material vacío; asígnale al menos una cara de la malla nueva")
     return result
 
 
@@ -548,7 +563,7 @@ def _vertex_weights(obj, original, native, notices):
     return joints, weights
 
 
-def _size_notices(name, reason, original, new):
+def _size_notices(name, reason, original, layout, new):
     """Tamaño de la malla nueva contra el original, tramo a tramo.
 
     El cargador del juego (Darksiders2DLL `override_unchecked`, 0.9.0) encaja la
@@ -564,7 +579,8 @@ def _size_notices(name, reason, original, new):
         vertices = len(np.unique(triangles[mine]))
         faces = int(mine.sum())
         if vertices > submesh.vertex_count or faces > submesh.index_count // 3:
-            out.append(("WARNING", f"{name}: el material «{submesh.name}» queda con {vertices} vértices y "
+            label = layout.materials[layout.span_slots[k]]
+            out.append(("WARNING", f"{name}: el material «{label}» queda con {vertices} vértices y "
                                    f"{faces} triángulos, más que los {submesh.vertex_count} y "
                                    f"{submesh.index_count // 3} del original; Darksiders2DLL 0.9.0 solo "
                                    "carga mallas que quepan en el original"))

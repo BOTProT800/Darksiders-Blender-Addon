@@ -99,7 +99,7 @@ se midió.
 - `operators.py` no puede usar `from __future__ import annotations`: Blender lee
   `__annotations__` al registrar las clases.
 - Blender de Steam no está en el `PATH`:
-  `C:\Program Files (x86)\Steam\steamapps\common\Blender\blender.exe` (5.2.2 LTS).
+  `C:\Program Files (x86)\Steam\steamapps\common\Blender\blender.exe` (5.2.3 LTS).
   Para QA, `--factory-startup` y `BLENDER_USER_RESOURCES` en un temporal, para
   no tocar la configuración del usuario.
 - Muestras del juego (fuera del repo):

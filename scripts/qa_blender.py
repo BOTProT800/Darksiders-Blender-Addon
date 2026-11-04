@@ -192,6 +192,61 @@ def main():
                                 "vertices": replaced.vertex_count, "triangles": replaced.triangle_count,
                                 "notices": notices, "reimported": True}
 
+    # Caso del usuario (2026-11-03): un arma con dos tramos del mismo nombre.
+    # axed02.2 trae «AxeD02» con los índices de material 0 y 2; se vacía, se le
+    # une axed01.2 y cada tramo de la donante va al tramo equivalente.
+    clear()
+    weapons = args.assets_root / "items/weapons"
+    assert bpy.ops.import_scene.darksiders_dcm(filepath=str(weapons / "axed02.2")) == {"FINISHED"}
+    holder = next(o for o in bpy.context.scene.objects if o.type == "MESH")
+    assert [slot.material.name for slot in holder.material_slots] == ["AxeD02 #0", "AxeD02 #2"]
+    _edit(holder, [list(range(len(holder.data.vertices)))], lambda: bpy.ops.mesh.delete(type="VERT"))
+    assert bpy.ops.import_scene.darksiders_dcm(filepath=str(weapons / "axed01.2")) == {"FINISHED"}
+    donor = next(o for o in bpy.context.scene.objects if o.type == "MESH" and o is not holder)
+    # axed01 tiene la topología de axed02: con sus identificadores de vértice la
+    # unión pasaría por la plantilla sin cambios. Sin ellos es una malla nueva
+    # cualquiera, como la del usuario.
+    donor.data.attributes.remove(donor.data.attributes["anansi_vertex_id"])
+    bpy.ops.object.select_all(action="DESELECT")
+    donor.select_set(True)
+    holder.select_set(True)
+    bpy.context.view_layer.objects.active = holder
+    assert bpy.ops.object.join() == {"FINISHED"}
+    names = [slot.material.name for slot in holder.material_slots]
+    assert names[2:] == ["AxeD01 #0", "AxeD01 #2"], names
+    joined = [polygon.material_index for polygon in holder.data.polygons]
+    assert set(joined) == {2, 3}
+    must_reject("foreign material on a two-span weapon", args.output_dir / "axed02_rejected.2")
+    for polygon in holder.data.polygons:  # todo al primer tramo: el segundo se queda vacío
+        polygon.material_index = 0
+    must_reject("empty span", args.output_dir / "axed02_rejected.2")
+    for polygon, slot in zip(holder.data.polygons, joined):  # «AxeD01 #k» -> «AxeD02 #k»
+        polygon.material_index = slot - 2
+    holder.data.update()
+    other = modules["mesh"].load_dcm(weapons / "axed01.2").meshes[0]
+    target = args.output_dir / "axed02.2"
+    notices = []
+    roundtrip.export_asset(bpy.context, target, modules, notices)
+    assert any("malla nueva" in message for _level, message in notices), notices
+    replaced = modules["mesh"].load_dcm(target).meshes[0]
+    assert [(s.name, s.material_index) for s in replaced.submeshes] == [("AxeD02", 0), ("AxeD02", 2)]
+    assert [s.index_count for s in replaced.submeshes] == [s.index_count for s in other.submeshes]
+    assert replaced.health().ok
+    for mine, theirs in zip(replaced.submeshes, other.submeshes):
+        tris = replaced.indices[mine.index_start // 3:(mine.index_start + mine.index_count) // 3]
+        expected = other.indices[theirs.index_start // 3:(theirs.index_start + theirs.index_count) // 3]
+        np.testing.assert_allclose(np.sort(replaced.positions[tris].reshape(-1, 9), axis=0),
+                                   np.sort(other.positions[expected].reshape(-1, 9), axis=0), atol=1e-4)
+    # Una escena de antes de la 2.3.0 no trae la marca: se pide reimportar.
+    del holder["anansi_split_spans"]
+    must_reject("pre-2.3.0 scene with merged spans", args.output_dir / "axed02_rejected.2")
+    assert not (args.output_dir / "axed02_rejected.2").exists()
+    clear()
+    assert bpy.ops.import_scene.darksiders_dcm(filepath=str(target)) == {"FINISHED"}
+    results["two_span_weapon"] = {"template": "items/weapons/axed02.2", "donor": "items/weapons/axed01.2",
+                                  "spans": [[s.name, s.material_index, s.index_count // 3] for s in replaced.submeshes],
+                                  "vertices": replaced.vertex_count, "notices": notices, "reimported": True}
+
     # UV dobladas de origen: en makermale_elder.2 hay vértices cuyas caras tienen
     # la UV en sentidos opuestos, y el .2 guarda un solo signo de bitangente.
     # Antes rechazaban cualquier edición del modelo; ahora conservan el signo.

@@ -138,3 +138,60 @@ def test_the_result_is_what_the_writer_accepts():
     mesh = parse_dcm(rebuilt).meshes[2]
     assert (mesh.vertex_count, mesh.triangle_count) == (4, 2)
     np.testing.assert_array_equal(mesh.positions[mesh.indices], POSITIONS[FACES])
+
+
+# --- Tramo de cada cara de una malla nueva (`_face_spans`) --------------------
+
+from types import SimpleNamespace  # noqa: E402
+
+import pytest  # noqa: E402
+
+from io_darksiders import plan  # noqa: E402
+from io_darksiders.formats.mesh import DcmSubmesh, parse_dcm  # noqa: E402
+from io_darksiders.roundtrip import PREFIX, _face_spans, _layout  # noqa: E402
+from tests.test_mesh import build_dcm  # noqa: E402
+
+
+def _axe():
+    """Como `axed02.2`: dos tramos «AxeD02», con los índices de material 0 y 2."""
+    mesh = parse_dcm(build_dcm()).meshes[0]
+    mesh.submeshes = (DcmSubmesh("AxeD02", 0, 0, 3, 0, 3), DcmSubmesh("AxeD02", 2, 0, 4, 3, 3))
+    return mesh
+
+
+class _Object(dict):
+    """Lo que `_face_spans` lee de un objeto de Blender: ranuras, caras y propiedades."""
+
+    def __init__(self, slots, faces, *, split=True):
+        super().__init__({PREFIX + "split_spans": True} if split else {})
+        self.name = "axed02_00"
+        self.material_slots = [SimpleNamespace(material=SimpleNamespace(name=name) if name else None)
+                               for name in slots]
+        self.data = SimpleNamespace(polygons=[SimpleNamespace(material_index=i) for i in faces])
+
+
+def _spans(obj, notices=None):
+    original = _axe()
+    return _face_spans(obj, original, _layout(obj, original, plan), native, [] if notices is None else notices)
+
+
+def test_each_repeated_span_is_chosen_by_its_own_slot():
+    # «.001» es lo que añade Blender si el material ya existía en el .blend.
+    obj = _Object(["AxeD02 #0", "AxeD02 #2.001", "Donor"], [1, 0, 1])
+    assert _spans(obj) == [1, 0, 1]
+
+
+def test_a_scene_imported_before_split_slots_asks_to_reimport():
+    with pytest.raises(native.DcmExportError, match="junta 2 tramos.*vuelve a importarlo"):
+        _spans(_Object(["AxeD02"], [0, 0], split=False))
+
+
+def test_a_span_left_without_faces_is_named():
+    # Ctrl+J con una malla sin materiales: todas sus caras caen en la ranura 0.
+    with pytest.raises(native.DcmExportError, match="sin caras en «AxeD02 #2»"):
+        _spans(_Object(["AxeD02 #0", "AxeD02 #2"], [0, 0, 0]))
+
+
+def test_foreign_faces_list_the_slots_to_choose_from():
+    with pytest.raises(native.DcmExportError, match=r"Donor \(2\); asígnales uno de: AxeD02 #0, AxeD02 #2"):
+        _spans(_Object(["AxeD02 #0", "AxeD02 #2", "Donor"], [2, 2]))

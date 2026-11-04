@@ -170,6 +170,36 @@ def test_cada_submalla_aporta_su_material() -> None:
     assert len(mesh.face_materials) == len(mesh.faces)
 
 
+def _two_spans(*spans):
+    """El quad de `build_dcm` con un tramo por triángulo: ``(nombre, índice de material)``."""
+    from io_darksiders.formats.mesh import DcmSubmesh
+
+    mesh = parse_dcm(build_dcm()).meshes[0]
+    mesh.submeshes = tuple(DcmSubmesh(name, index, 0, 4, 3 * k, 3) for k, (name, index) in enumerate(spans))
+    return mesh
+
+
+def test_los_tramos_del_mismo_nombre_tienen_cada_uno_su_ranura() -> None:
+    """Caso del usuario (2026-11-03): `axed02.2` lleva «AxeD02» con los índices
+    de material 0 y 2. En una sola ranura, una cara nueva no tenía a qué tramo ir."""
+    mesh = _two_spans(("AxeD02", 0), ("AxeD02", 2))
+
+    built = plan.build_mesh_plan(mesh, 0, "axed02")
+    assert built.materials == ["AxeD02 #0", "AxeD02 #2"]
+    assert built.face_materials == [0, 1]
+    assert built.span_slots == [0, 1]
+
+    legacy = plan.build_mesh_plan(mesh, 0, "axed02", split_spans=False)
+    assert legacy.materials == ["AxeD02"]
+    assert legacy.face_materials == [0, 0]
+    assert legacy.span_slots == [0, 0]
+
+
+def test_un_nombre_que_no_se_repite_no_lleva_sufijo() -> None:
+    assert plan.build_mesh_plan(_two_spans(("Blade", 0), ("Grip", 1)), 0, "axe").materials == ["Blade", "Grip"]
+    assert plan.build_mesh_plan(_two_spans(("", 1), ("", 2)), 0, "axe").materials == ["material_1", "material_2"]
+
+
 def test_el_plan_y_los_parsers_se_importan_sin_blender() -> None:
     """El paquete no importa `bpy` hasta registrar: si lo hiciera, ni esta suite
     ni los scripts de corpus podrían usar los parsers fuera de Blender."""

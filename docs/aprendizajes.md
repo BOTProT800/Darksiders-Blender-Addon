@@ -52,6 +52,11 @@ algo verificable: en el corpus no hubo ni un caso ambiguo (2026-10-13).
   en su material el render sale correcto (2026-10-13). Los 8 bytes entre la UV
   y el color del registro de atributos con piel (@+8) tampoco son una segunda
   UV: valen −69..75 en esa malla y su significado sigue sin saberse;
+- dos tramos con el mismo nombre no son el mismo material: llevan distinto
+  índice de material (254 mallas con piel, 130 de ellas armas). La importación
+  los juntaba por nombre y toda arma vaciada y rellenada con `Ctrl+J` fallaba al
+  exportar. La identidad de un tramo es su posición; el nombre es una etiqueta
+  (2026-11-03);
 - «UV espejadas comparten un vértice» no delataba una edición inválida. Los
   assets traen triángulos de UV doblados de origen (unas 371 de las 1.624
   mallas con piel) y el `.2` guarda un solo signo de bitangente por vértice;
